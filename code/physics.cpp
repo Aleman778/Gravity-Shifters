@@ -1,10 +1,18 @@
 
 bool
+box_check(v2 a_min, v2 a_max, v2 b_min, v2 b_max) {
+    return !(a_min.x > b_max.x ||
+             a_max.x < b_min.x ||
+             a_max.y < b_min.y ||
+             a_min.y > b_max.y);
+}
+
+Collision_Result
 box_collision(Entity* rigidbody, Entity* other, v2* step_velocity, bool resolve) {
-    bool found = false;
+    Collision_Result found = Col_None;
     
     v2 step_position = rigidbody->p + *step_velocity;
-    if (step_position.y + rigidbody->size.y - 0.01f > other->p.y && 
+    if (step_position.y + rigidbody->size.y > other->p.y && 
         step_position.y < other->p.y + other->size.y) {
         
         if (step_velocity->x < 0.0f && rigidbody->p.x >= other->p.x + other->size.x) {
@@ -14,7 +22,8 @@ box_collision(Entity* rigidbody, Entity* other, v2* step_velocity, bool resolve)
                     step_velocity->x = other->p.x + other->size.x - rigidbody->p.x;
                     rigidbody->velocity.x = 0.0f;
                 }
-                found = true;
+                
+                found = Col_Left;
             }
         } else if (step_velocity->x > 0.0f && rigidbody->p.x + rigidbody->size.x <= other->p.x) {
             f32 x_overlap = step_position.x - other->p.x + rigidbody->size.x;
@@ -23,7 +32,7 @@ box_collision(Entity* rigidbody, Entity* other, v2* step_velocity, bool resolve)
                     step_velocity->x = other->p.x - rigidbody->size.x - rigidbody->p.x;
                     rigidbody->velocity.x = 0.0f;
                 }
-                found = true;
+                found = Col_Right;
             }
         }
     }
@@ -38,7 +47,7 @@ box_collision(Entity* rigidbody, Entity* other, v2* step_velocity, bool resolve)
                     step_velocity->y = other->p.y + other->size.y - rigidbody->p.y;
                     rigidbody->velocity.y = 0.0f;
                 }
-                found = true;
+                found = Col_Top;
             }
         } else if (step_velocity->y > 0.0f && rigidbody->p.y + rigidbody->size.y <= other->p.y) {
             f32 y_overlap = step_position.y - other->p.y + rigidbody->size.y;
@@ -48,7 +57,7 @@ box_collision(Entity* rigidbody, Entity* other, v2* step_velocity, bool resolve)
                     rigidbody->velocity.y = 0.0f;
                     rigidbody->is_grounded = true;
                 }
-                found = true;
+                found = Col_Bottom;
             }
         }
     }
@@ -108,12 +117,16 @@ check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
     for (int j = 0; j < game->entity_count; j++) {
         Entity* other = &game->entities[j];
         if ((other != entity && other->is_rigidbody) || 
-            other->type == Box_Collider) {
+            other->type == Box_Collider || 
+            other->type == Spikes) {
             
-            bool collided = box_collision(entity, other, step_velocity, !other->is_rigidbody);
-            if (collided) {
+            Collision_Result collision = box_collision(entity, other, step_velocity, !other->is_rigidbody);
+            if (collision) {
                 entity->collided = true;
+                //if (other->type != Box_Collider) {
                 entity->collided_with = other;
+                entity->collision = collision;
+                //}
                 result = true;
             }
         }
@@ -141,18 +154,18 @@ update_rigidbody(Game_State* game, Entity* entity) {
     entity->p += step_velocity;
     entity->velocity += entity->acceleration * delta_time;
     
-    if (entity->num_frames > 0) {
-        entity->frame_advance += step_velocity.x * entity->frame_advance_rate;
+    if (entity->frames > 0) {
+        entity->frame_advance += step_velocity.x * entity->frame_duration;
         if (fabsf(step_velocity.x) <= 0.01f) {
             entity->frame_advance = 0.0f;
         }
         
-        if (entity->frame_advance > entity->num_frames) {
-            entity->frame_advance -= entity->num_frames;
+        if (entity->frame_advance > entity->frames) {
+            entity->frame_advance -= entity->frames;
         }
         
         if (entity->frame_advance < 0.0f) {
-            entity->frame_advance += entity->num_frames;
+            entity->frame_advance += entity->frames;
         }
     }
     

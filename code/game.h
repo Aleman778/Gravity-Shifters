@@ -13,21 +13,42 @@ enum Entity_Type {
     Box_Collider
 };
 
+enum Entity_Layer {
+    Layer_Background,
+    Layer_Player,
+    Layer_Foreground,
+    
+    Layer_Count,
+};
+
+
+enum Collision_Result {
+    Col_None,
+    Col_Left,
+    Col_Right,
+    Col_Top,
+    Col_Bottom,
+};
+
 struct Entity {
     // Physics/ collider (and render shape)
     Entity* collided_with;
+    Collision_Result collision;
+    
     v2 p;
     v2 size;
     v2 velocity;
     v2 acceleration;
     v2 max_speed;
     
-    // Animation
-    s32 num_frames;
+    // Rendering
+    Texture2D* sprite;
     f32 frame_advance;
-    f32 frame_advance_rate;
+    f32 frame_duration;
+    int frames;
     
     Entity_Type type;
+    Entity_Layer layer;
     
     bool collided;
     bool is_rigidbody;
@@ -36,6 +57,13 @@ struct Entity {
 };
 
 #define MAX_ENTITY_COUNT 255
+
+#define DEF_TEXUTRE2D \
+TEX2D(tiles, "tileset_grass.png") \
+TEX2D(coin, "coin.png") \
+TEX2D(ui_coin, "ui_coin.png") \
+TEX2D(spikes, "spikes.png")
+
 
 struct Game_State {
     Entity* player;
@@ -50,7 +78,13 @@ struct Game_State {
     bool is_moon_gravity;
     f32 jump_velocity;
     
-    Texture2D texture_tiles;
+    int coins;
+    
+    // Resource
+#define TEX2D(name, ...) Texture2D texture_##name;
+    DEF_TEXUTRE2D
+#undef TEX2D
+    Font font_default;
     
     u8* tile_map;
     int tile_map_width;
@@ -67,6 +101,8 @@ struct Game_State {
     f32 meters_to_pixels;
     f32 pixels_to_meters;
 };
+
+void game_draw_ui(Game_State* game, f32 scale);
 
 struct Game_Controller {
     v2 dir;
@@ -121,6 +157,16 @@ spawn_entity(Game_State* game, Entity_Type type) {
 inline s32
 round_f32_to_s32(f32 value) {
     return (s32) round(value);
+}
+
+inline v2
+to_pixel_v2(Game_State* game, v2 world_p) {
+    return (world_p - game->camera_p) * game->meters_to_pixels;
+}
+
+inline v2
+to_pixel_size_v2(Game_State* game, v2 world_p) {
+    return world_p * game->meters_to_pixels;
 }
 
 inline v2s
