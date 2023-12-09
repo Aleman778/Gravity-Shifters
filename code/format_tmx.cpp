@@ -4,7 +4,8 @@
 enum Tmx_Object_Group {
     TmxObjectGroup_Entities,
     TmxObjectGroup_Colliders,
-    TmxObjectGroup_Triggers
+    TmxObjectGroup_Triggers,
+    TmxObjectGroup_Checkpoints
 };
 
 struct Tmx_Object {
@@ -55,6 +56,11 @@ read_entire_file(cstring filename) {
     Read_File_Result result;
     result.contents = LoadFileData(filename, &result.contents_size);
     return result;
+}
+
+void
+free_file_data(void* data) {
+    UnloadFileData((u8*) data);
 }
 
 //Loaded_Tmx read_tmx_map_data(u8* scan, Memory_Arena* arena);
@@ -130,6 +136,8 @@ read_tmx_map_data(u8* scan, Memory_Arena* arena) {
                         read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Colliders);
                     } else if (string_equals(name, string_lit("Triggers"))) {
                         read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Triggers);
+                    } else if (string_equals(name, string_lit("Checkpoints"))) {
+                        read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Checkpoints);
                     } else {
                         //pln("Invalid object group: %", name);
                         assert(0 && "invalid objectgroup found");
@@ -155,7 +163,9 @@ read_tmx_map_data(string filename,
     
     
     Loaded_Tmx result = read_tmx_map_data((u8*) file.contents, arena);
-    //free_file_memory(file.contents);
+    free_file_data(file.contents);
+    
+    
     return result;
 }
 

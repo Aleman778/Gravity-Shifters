@@ -20,7 +20,7 @@ if ["%~1"]==["release"] (call :Release) else (call :Debug)
 goto :EOF
 
 :Debug
-    set compiler_flags=-Od -Zi -DBUILD_DEBUG=1 %compiler_flags%
+    set compiler_flags=-Od -Zi -DBUILD_DEBUG=1 -DDEVELOPER=1 %compiler_flags%
     goto :Compile
 
 :Release

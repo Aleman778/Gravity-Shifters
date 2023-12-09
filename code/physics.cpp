@@ -12,15 +12,17 @@ box_check(Box a, Box b) {
     return box_check(a.p, a.p + a.size, b.p, b.p + b.size);
 }
 
-Collision_Result
-box_collision(Entity* rigidbody, Box other, v2* step_velocity, bool resolve) {
-    Collision_Result found = Col_None;
+#define SKIN_WIDTH 0.0f
+
+Collision
+box_collision(Entity* rigidbody, Box other, v2* step_velocity, bool resolve, Collision mask) {
+    Collision found = Col_None;
     
     v2 step_position = rigidbody->p + *step_velocity;
     if (step_position.y + rigidbody->size.y > other.p.y && 
         step_position.y < other.p.y + other.size.y) {
         
-        if (step_velocity->x < 0.0f && rigidbody->p.x >= other.p.x + other.size.x) {
+        if (mask & Col_Left && step_velocity->x < 0.0f && rigidbody->p.x >= other.p.x + other.size.x) {
             f32 x_overlap = other.p.x + other.size.x - step_position.x;
             if (x_overlap > 0.0f) {
                 if (resolve) {
@@ -30,7 +32,7 @@ box_collision(Entity* rigidbody, Box other, v2* step_velocity, bool resolve) {
                 
                 found = Col_Left;
             }
-        } else if (step_velocity->x > 0.0f && rigidbody->p.x + rigidbody->size.x <= other.p.x) {
+        } else if (mask & Col_Right && step_velocity->x > 0.0f && rigidbody->p.x + rigidbody->size.x <= other.p.x) {
             f32 x_overlap = step_position.x - other.p.x + rigidbody->size.x;
             if (x_overlap > 0.0f) {
                 if (resolve) {
@@ -44,12 +46,12 @@ box_collision(Entity* rigidbody, Box other, v2* step_velocity, bool resolve) {
     
     if (rigidbody->p.x + rigidbody->size.x > other.p.x && 
         rigidbody->p.x < other.p.x + other.size.x) {
-        if (step_velocity->y < 0.0f && rigidbody->p.y <= other.p.y + other.size.y &&
+        if (mask & Col_Top && step_velocity->y < 0.0f && rigidbody->p.y <= other.p.y + other.size.y &&
             rigidbody->p.y + rigidbody->size.y > other.p.y) {
             f32 y_overlap = step_position.y - other.p.y + other.size.y;
-            if (y_overlap > 0.0f) {
+            if (y_overlap > SKIN_WIDTH) {
                 if (resolve) {
-                    step_velocity->y = other.p.y + other.size.y - rigidbody->p.y;
+                    step_velocity->y = other.p.y - SKIN_WIDTH + other.size.y - rigidbody->p.y;
                     rigidbody->velocity.y = 0.0f;
                     if (rigidbody->invert_gravity) {
                         rigidbody->is_grounded = true;
@@ -57,11 +59,11 @@ box_collision(Entity* rigidbody, Box other, v2* step_velocity, bool resolve) {
                 }
                 found = Col_Top;
             }
-        } else if (step_velocity->y > 0.0f && rigidbody->p.y + rigidbody->size.y <= other.p.y) {
+        } else if (mask & Col_Bottom && step_velocity->y > 0.0f && rigidbody->p.y + rigidbody->size.y <= other.p.y) {
             f32 y_overlap = step_position.y - other.p.y + rigidbody->size.y;
-            if (y_overlap > 0.0f) {
+            if (y_overlap > SKIN_WIDTH) {
                 if (resolve) {
-                    step_velocity->y = other.p.y - rigidbody->size.y - rigidbody->p.y;
+                    step_velocity->y = other.p.y + SKIN_WIDTH - rigidbody->size.y - rigidbody->p.y;
                     rigidbody->velocity.y = 0.0f;
                     if (!rigidbody->invert_gravity) {
                         rigidbody->is_grounded = true;
@@ -105,7 +107,7 @@ check_tilemap_collision(Game_State* game, Entity* entity, v2* step_velocity) {
                 
                 collider.p = vec2((f32) x, (f32) y);
                 
-                bool collided = box_collision(entity, collider, step_velocity, true);
+                bool collided = box_collision(entity, collider, step_velocity, true, Col_All);
                 if (collided) {
                     result = true;
                 }
@@ -126,7 +128,7 @@ check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
     entity->map_collision = Col_None;
     
     for_array(game->colliders, other, _) {
-        Collision_Result collision = box_collision(entity, *other, step_velocity, true);
+        Collision collision = box_collision(entity, *other, step_velocity, true, Col_All);
         if (collision) {
             entity->map_collision = entity->map_collision | collision;
             result = true;
@@ -135,7 +137,15 @@ check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
     
     for_array(game->entities, other, _2) {
         if (other != entity && (other->is_rigidbody || other->is_solid)) {
-            Collision_Result collision = box_collision(entity, other->collider, step_velocity, !other->is_rigidbody);
+            Box other_collider = other->collider;
+            other_collider.p += other->offset;
+            Collision mask = other->collision_mask;
+            if (mask == Col_None) {
+                mask = Col_All;
+            }
+            
+            Collision collision = box_collision(entity, other_collider, 
+                                                step_velocity, !other->is_rigidbody, mask);
             if (collision) {
                 entity->collided_with = other;
                 entity->collision = collision;
@@ -145,8 +155,8 @@ check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
     }
     
     // Collision with the tiles
-    //bool tilemap_result = check_tilemap_collision(game, entity, step_velocity);
-    //result = result | tilemap_result;
+    bool tilemap_result = check_tilemap_collision(game, entity, step_velocity);
+    result = result | tilemap_result;
     
     return result;
 }
@@ -182,6 +192,10 @@ update_rigidbody(Game_State* game, Entity* entity) {
     
     if (fabsf(entity->velocity.x) > entity->max_speed.x) {
         entity->velocity.x = sign(entity->velocity.x) * entity->max_speed.x;
+    }
+    
+    if (fabsf(entity->velocity.y) > entity->max_speed.y) {
+        entity->velocity.y = sign(entity->velocity.y) * entity->max_speed.y;
     }
     
     if (!game->is_moon_gravity || entity->is_grounded) {

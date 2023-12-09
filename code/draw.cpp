@@ -31,43 +31,67 @@ draw_tilemap(Game_State* game) {
     }
 }
 
+int
+get_frame_index(Entity* entity) {
+    f32 anim_duration = entity->frame_duration * entity->frames;
+    int frame = (int) (entity->frame_advance * anim_duration);
+    return frame;
+}
+
+void
+draw_sprite(Game_State* game, Texture2D* sprite, v2 p, v2 size, v2 dir, int frame=0) {
+    p = to_pixel_v2(game, p);
+    size = to_pixel_size_v2(game, size);
+    
+    Rectangle src = { 0, 0, size.width, size.height };
+    Rectangle dest = { p.x, p.y, size.width, size.height  };
+    
+    if (frame > 1) {
+        src.x += size.width*frame;
+    }
+    
+    if (dir.x < 0) {
+        src.width = -src.width;
+    }
+    if (dir.y < 0) {
+        src.height = -src.height;
+    }
+    
+    Vector2 origin = {};
+    DrawTexturePro(*sprite, src, dest, origin, 0, WHITE);
+}
+
+#define VINE_COLOR CLITERAL(Color){ 47, 87, 83, 255 }
+
 void
 draw_entity(Game_State* game, Entity* entity) {
     if (entity->type == None) return;
     
-    if (entity->sprite) {
-        v2 p = to_pixel_v2(game, entity->p);
-        v2 size = to_pixel_size_v2(game, entity->size);
+    switch (entity->type) {
+        case Vine: {
+            if (entity->size.x > 1.0f) { 
+                f32 y_offset = entity->direction.y < 0 ? 0.0f : 1.0f;
+                v2s s = to_pixel(game, entity->p + vec2(entity->offset.x, y_offset));
+                v2s e = to_pixel(game, entity->p + vec2(entity->size.x + entity->offset.x, y_offset));
+                DrawLine(s.x, s.y, e.x, e.y, VINE_COLOR);
+                DrawLine(s.x, s.y + 1, e.x, e.y + 1, VINE_COLOR);
+            } else {
+                draw_sprite(game, entity->sprite, entity->p + vec2(0.0f, 0.0f), vec2(1.0f, 1.0f), entity->direction);
+            }
+        } break;
         
-        Rectangle src = { 0, 0, size.width, size.height };
-        Rectangle dest = { p.x, p.y, size.width, size.height  };
-        
-        if (entity->frames > 1) {
-            f32 anim_duration = entity->frame_duration * entity->frames;
-            int frame = (int) (entity->frame_advance * anim_duration);
-            src.x += size.width * frame;
-            
-            entity->frame_advance += GetFrameTime();
-            if (entity->frame_advance > anim_duration) {
-                entity->frame_advance -= anim_duration;
+        default: {
+            if (entity->sprite) {
+                int frame = get_frame_index(entity);
+                draw_sprite(game, entity->sprite, entity->p, entity->size, entity->direction, frame);
+            } else {
+                v2s p = to_pixel(game, entity->p);
+                v2s size = to_pixel_size(game, entity->size);
+                DrawRectangle(p.x, p.y, size.width, size.height, RED);
             }
         }
-        
-        if (entity->direction.x < 0) {
-            src.width = -src.width;
-        }
-        if (entity->direction.y < 0) {
-            src.height = -src.height;
-        }
-        
-        Vector2 origin = {};
-        DrawTexturePro(*entity->sprite, src, dest, origin, 0, WHITE);
-    } else {
-        v2s p = to_pixel(game, entity->p);
-        v2s size = to_pixel_size(game, entity->size);
-        
-        DrawRectangle(p.x, p.y, size.width, size.height, RED);
     }
+    
 }
 
 void

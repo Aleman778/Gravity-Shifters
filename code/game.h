@@ -12,6 +12,7 @@ enum Entity_Type {
     Coin,
     Enemy_Plum,
     Enemy_Plum_Dead,
+    Vine,
 };
 
 enum Entity_Layer {
@@ -22,12 +23,14 @@ enum Entity_Layer {
     Layer_Count,
 };
 
-enum Collision_Result {
+enum Collision {
     Col_None   = 0,
     Col_Left   = bit(1),
     Col_Right  = bit(2),
     Col_Top    = bit(3),
     Col_Bottom = bit(4),
+    
+    Col_All = Col_Left | Col_Right | Col_Top | Col_Bottom
 };
 
 struct Box {
@@ -38,7 +41,7 @@ struct Box {
 struct Entity {
     // Physics/ collider (and render shape)
     Entity* collided_with;
-    Collision_Result collision;
+    Collision collision;
     int map_collision;
     
     union {
@@ -48,6 +51,7 @@ struct Entity {
         };
         Box collider;
     };
+    v2 offset;
     v2 velocity;
     v2 acceleration;
     v2 max_speed;
@@ -70,6 +74,7 @@ struct Entity {
     s32 coins;
     int safe_frames;
     
+    Collision collision_mask; // make solid on certain directions
     bool is_solid;
     bool is_rigidbody;
     bool is_grounded;
@@ -84,6 +89,7 @@ enum Game_Mode {
 struct Saved_Entity {
     Entity_Type type;
     v2 p;
+    v2 direction;
     bool invert_gravity;
 };
 
@@ -93,25 +99,25 @@ TEX2D(coin, "coin.png") \
 TEX2D(ui_coin, "ui_coin.png") \
 TEX2D(spikes, "spikes.png") \
 TEX2D(plum, "plum.png") \
-TEX2D(plum_dead, "plum_dead.png")
-
-#define MAX_ENTITY_COUNT 255
-#define MAX_COLLIDER_COUNT 255
-#define MAX_TRIGGER_COUNT 10
+TEX2D(plum_dead, "plum_dead.png") \
+TEX2D(vine, "vine.png")
 
 struct Game_State {
     Entity* player;
     
-    Entity entities[MAX_ENTITY_COUNT];
+    Entity entities[255];
     int entity_count;
     
-    Saved_Entity saved_entities[MAX_ENTITY_COUNT];
+    Saved_Entity saved_entities[255];
     //int saved_entity_count;
     
-    Box colliders[MAX_COLLIDER_COUNT];
+    Box colliders[255];
     int collider_count;
     
-    Box triggers[MAX_TRIGGER_COUNT];
+    Box checkpoints[20];
+    int checkpoint_count;
+    
+    Box triggers[10];
     int trigger_count;
     
     Game_Mode mode;
@@ -203,7 +209,7 @@ get_controller(Game_State* game, int gamepad_index=0) {
 
 inline Entity*
 add_entity(Game_State* game, Entity_Type type) {
-    assert(game->entity_count < MAX_ENTITY_COUNT && "too many entities");
+    assert(game->entity_count < fixed_array_count(game->entities) && "too many entities");
     Entity* entity = &game->entities[game->entity_count++];
     *entity = {};
     entity->type = type;
@@ -212,7 +218,7 @@ add_entity(Game_State* game, Entity_Type type) {
 
 inline void
 add_collider(Game_State* game, v2 p, v2 size) {
-    assert(game->collider_count < MAX_ENTITY_COUNT && "too many colliders");
+    assert(game->collider_count < fixed_array_count(game->colliders) && "too many colliders");
     Box* collider = &game->colliders[game->collider_count++];
     collider->p = p;
     collider->size = size;
@@ -220,8 +226,16 @@ add_collider(Game_State* game, v2 p, v2 size) {
 
 inline void
 add_trigger(Game_State* game, v2 p, v2 size) {
-    assert(game->trigger_count < MAX_ENTITY_COUNT && "too many colliders");
+    assert(game->trigger_count < fixed_array_count(game->triggers) && "too many triggers");
     Box* collider = &game->triggers[game->trigger_count++];
+    collider->p = p;
+    collider->size = size;
+}
+
+inline void
+add_checkpoint(Game_State* game, v2 p, v2 size) {
+    assert(game->checkpoint_count < fixed_array_count(game->checkpoints) && "too many checkpoints");
+    Box* collider = &game->checkpoints[game->checkpoint_count++];
     collider->p = p;
     collider->size = size;
 }

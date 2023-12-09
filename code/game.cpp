@@ -14,7 +14,7 @@ const s32 first_gid = 41;
 const s32 player_gid = 41;
 const s32 player_inverted_gid = 42;
 const Entity_Type gid_to_entity_type[] = {
-    Player, Player, Spikes, Spikes_Top, Coin, Enemy_Plum,
+    Player, Player, Spikes, Spikes_Top, Coin, Enemy_Plum, None, Vine
 };
 
 void
@@ -25,6 +25,7 @@ configure_entity(Game_State* game, Entity* entity) {
             entity->health = 1;
             entity->is_rigidbody = true;
             entity->max_speed.x = 5.0f;
+            entity->max_speed.y = 20.0f;
             game->player = entity;
         } break;
         
@@ -38,12 +39,12 @@ configure_entity(Game_State* game, Entity* entity) {
         case Spikes: {
             entity->sprite = &game->texture_spikes;
             entity->size = vec2(1.0f, 1.0f);
-            entity->is_solid = false;
+            entity->is_solid = true;
         } break;
         
         case Spikes_Top: {
             entity->sprite = &game->texture_spikes;
-            entity->direction.y = -1;
+            //entity->direction.y = -1;
             entity->size = vec2(1.0f, 1.0f);
             entity->is_solid = true;
         } break;
@@ -53,6 +54,18 @@ configure_entity(Game_State* game, Entity* entity) {
             entity->sprite = &game->texture_plum;
             entity->size = vec2(1.0f, 1.0f);
             entity->is_rigidbody = true;
+        } break;
+        
+        case Vine: {
+            entity->sprite = &game->texture_vine;
+            entity->size = vec2(1.0f, 1.0f);
+            if (entity->direction.y < 0) {
+                entity->offset.y = -1.0f;
+                entity->collision_mask = Col_Top;
+            } else {
+                entity->offset.y = 1.0f;
+                entity->collision_mask = Col_Bottom;
+            }
         } break;
     }
 }
@@ -94,6 +107,7 @@ save_game_state(Game_State* game) {
         Saved_Entity* saved_entity = &game->saved_entities[i];
         saved_entity->type = entity->type;
         saved_entity->p = entity->p;
+        saved_entity->direction = entity->direction;
         if (saved_entity->type == Player) {
             
             Surround_Tiles s = get_floor_tiles(game, entity);
@@ -116,6 +130,7 @@ restore_game_state(Game_State* game) {
         *entity = {};
         entity->type = saved_entity->type;
         entity->p = saved_entity->p;
+        entity->direction = saved_entity->direction;
         entity->invert_gravity = saved_entity->invert_gravity;
         configure_entity(game, entity);
     }
@@ -126,6 +141,11 @@ convert_tmx_object_to_entity(Game_State* game, Tmx_Object* object) {
     Entity* entity = add_entity(game, None);
     entity->p = object->p;
     entity->size = object->size;
+    
+    entity->direction.x = (object->gid & bit(31)) ? -1.0f : 1.0f;
+    entity->direction.y = (object->gid & bit(30)) ? -1.0f : 1.0f;
+    object->gid &= bit(30) - 1;
+    
     s32 index = object->gid - first_gid;
     if (index >= 0 && index < fixed_array_count(gid_to_entity_type)) {
         entity->type = gid_to_entity_type[index];
@@ -147,6 +167,9 @@ void
 game_setup_level(Game_State* game, Memory_Arena* level_arena, string filename) {
     clear(level_arena);
     game->entity_count = 0;
+    game->collider_count = 0;
+    game->trigger_count = 0;
+    game->checkpoint_count = 0;
     
     Loaded_Tmx tmx = read_tmx_map_data(filename, level_arena);
     game->tile_map = tmx.tile_map;
@@ -166,6 +189,10 @@ game_setup_level(Game_State* game, Memory_Arena* level_arena, string filename) {
             
             case TmxObjectGroup_Triggers: {
                 add_trigger(game, object->p, object->size);
+            } break;
+            
+            case TmxObjectGroup_Checkpoints: {
+                add_checkpoint(game, object->p, object->size);
             } break;
         }
     }
@@ -230,13 +257,13 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
         Entity* other = player->collided_with;
         switch (other->type) {
             case Spikes: {
-                if (player->collision == Col_Bottom) {
+                if (player->collision == Col_Top || player->collision == Col_Bottom) {
                     kill_entity(player);
                 }
             } break;
             
             case Spikes_Top: {
-                if (player->collision == Col_Top) {
+                if (player->collision == Col_Top || player->collision == Col_Bottom) {
                     kill_entity(player);
                 }
             } break;
@@ -258,23 +285,39 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
         }
     }
     
-    if (player->is_grounded && player->health > 0) {
+    if (player->is_grounded && !player->collided_with && player->health > 0) {
         // Save restore point (within checkpoint regions)
-        bool is_nearby_enemy = false;
-        for_array(game->entities, other, _) {
-            if (other->type == Enemy_Plum) {
-                Box area = other->collider;
-                area.p -= 5.0f;
-                area.size += 10.0f;
-                
-                if (box_check(player->collider, area)) {
-                    is_nearby_enemy = true;
-                }
+        bool is_within_checkpoint = false;
+        for_array(game->checkpoints, checkpoint, checkpoint_index) {
+            if (checkpoint_index >= game->checkpoint_count) {
+                break;
+            }
+            
+            if (box_check(player->collider, *checkpoint)) {
+                is_within_checkpoint = true;
+                break;
             }
         }
         
-        if (!is_nearby_enemy) {
-            save_game_state(game);
+        
+        if (is_within_checkpoint) {
+            // Make sure we don't save next to an enemy and soft lock the game
+            bool is_nearby_enemy = false;
+            for_array(game->entities, other, _2) {
+                if (other->type == Enemy_Plum) {
+                    Box area = other->collider;
+                    area.p -= 5.0f;
+                    area.size += 10.0f;
+                    
+                    if (box_check(player->collider, area)) {
+                        is_nearby_enemy = true;
+                    }
+                }
+            }
+            
+            if (!is_nearby_enemy) {
+                save_game_state(game);
+            }
         }
     }
     
@@ -351,14 +394,46 @@ game_update_and_render_level(Game_State* game) {
                 update_enemy_plum(game, entity);
             } break;
             
+            case Vine: {
+                bool expand = entity->direction.y < 0 ? 
+                    game->player->invert_gravity : !game->player->invert_gravity;
+                
+                if (expand) {
+                    if (entity->direction.y < 0) {
+                        entity->size = vec2(6.0f, 1.0f);
+                        //entity->size = vec2(0.2f, 6.0f);
+                    } else {
+                        entity->size = vec2(6.0f, 1.0f);
+                        if (entity->direction.x < 0) {
+                            entity->offset.x = -5.0f;
+                        }
+                    }
+                    entity->is_solid = true;
+                } else {
+                    entity->size = vec2(1.0f, 1.0f);
+                    entity->offset.x = 0;
+                    entity->is_solid = false;
+                }
+                
+            } break;
+            
             default: {
                 update_rigidbody(game, entity);
             } break;
         }
         
+        // Update animations
+        if (entity->frames > 1) {
+            entity->frame_advance += GetFrameTime();
+            f32 anim_duration = entity->frame_duration * entity->frames;
+            if (entity->frame_advance > anim_duration) {
+                entity->frame_advance -= anim_duration;
+            }
+        }
+        
         // Kill areas
-        if (entity->p.y < -entity->size.y - 0.5f ||
-            entity->p.y > game->game_height + 0.5f) {
+        if ((entity->invert_gravity  && entity->p.y < -entity->size.y - 0.5f) ||
+            (!entity->invert_gravity && entity->p.y > game->game_height + 0.5f)) {
             
             entity->health = 0;
             if (entity->type != Player) {
@@ -443,6 +518,19 @@ game_draw_ui(Game_State* game, f32 scale) {
     DrawTextEx(game->font_default, coins, p, 14*scale, 0, WHITE);
 }
 
+#define DEF_LEVEL1 \
+LVL("level1") \
+LVL("level1_2") \
+LVL("level1_3") \
+LVL("level1_4") \
+LVL("level1_5")
+
+cstring level_assets[] = {
+#define LVL(filename) "assets/"##filename##".tmx", 
+    DEF_LEVEL1
+#undef LVL
+};
+
 int
 main() {
     Game_State game = {};
@@ -475,7 +563,8 @@ main() {
     RenderTexture2D render_target = LoadRenderTexture(game.render_width, game.render_height);
     SetTextureFilter(render_target.texture, TEXTURE_FILTER_POINT);
     
-    game_setup_level(&game, &level_arena, string_lit("assets/level1_2.tmx"));
+    cstring filename = level_assets[fixed_array_count(level_assets) - 1];
+    game_setup_level(&game, &level_arena, string_lit(filename));
     
     while (!WindowShouldClose()) {
         
@@ -484,6 +573,13 @@ main() {
             MaximizeWindow();
             ToggleFullscreen();
         }
+        
+#if DEVELOPER
+        int select_level = GetCharPressed() - '0';
+        if (select_level >= 0 && select_level < fixed_array_count(level_assets)) {
+            game_setup_level(&game, &level_arena, string_lit(level_assets[select_level]));
+        }
+#endif
         
         // TODO: maybe resize the game size on window resize?
         //if (IsWindowResized()) {
