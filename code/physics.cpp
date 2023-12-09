@@ -123,17 +123,19 @@ check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
     entity->is_grounded = false;
     entity->collided_with = 0;
     entity->collision = Col_None;
+    entity->map_collision = Col_None;
     
     for_array(game->colliders, other, _) {
         Collision_Result collision = box_collision(entity, *other, step_velocity, true);
         if (collision) {
+            entity->map_collision = entity->map_collision | collision;
             result = true;
         }
     }
     
     for_array(game->entities, other, _2) {
         if (other != entity && (other->is_rigidbody || other->is_solid)) {
-            Collision_Result collision = box_collision(entity, entity->collider, step_velocity, !other->is_rigidbody);
+            Collision_Result collision = box_collision(entity, other->collider, step_velocity, !other->is_rigidbody);
             if (collision) {
                 entity->collided_with = other;
                 entity->collision = collision;

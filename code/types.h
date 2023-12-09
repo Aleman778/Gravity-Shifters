@@ -10,6 +10,13 @@
 #define pln(format, ...)
 #endif
 
+// NOTE(Alexander): bit stuff
+#define bit(x) (1 << (x))
+#define is_bit_set(var, x) ((var) & (1 << (x)))
+#define is_bitflag_set(var, flag) ((var) & (flag))
+
+
+// NOTE(Alexander): define more convinient types
 #define fixed_array_count(array) (sizeof(array) / sizeof((array)[0]))
 
 typedef int8_t    s8;

@@ -10,7 +10,8 @@ enum Entity_Type {
     Spikes,
     Spikes_Top,
     Coin,
-    Box_Collider
+    Enemy_Plum,
+    Enemy_Plum_Dead,
 };
 
 enum Entity_Layer {
@@ -22,11 +23,11 @@ enum Entity_Layer {
 };
 
 enum Collision_Result {
-    Col_None,
-    Col_Left,
-    Col_Right,
-    Col_Top,
-    Col_Bottom,
+    Col_None   = 0,
+    Col_Left   = bit(1),
+    Col_Right  = bit(2),
+    Col_Top    = bit(3),
+    Col_Bottom = bit(4),
 };
 
 struct Box {
@@ -38,6 +39,7 @@ struct Entity {
     // Physics/ collider (and render shape)
     Entity* collided_with;
     Collision_Result collision;
+    int map_collision;
     
     union {
         struct {
@@ -49,6 +51,7 @@ struct Entity {
     v2 velocity;
     v2 acceleration;
     v2 max_speed;
+    v2 direction;
     
     bool invert_gravity;
     f32 gravity;
@@ -56,7 +59,6 @@ struct Entity {
     
     // Rendering
     Texture2D* sprite;
-    bool sprite_flipv;
     f32 frame_advance;
     f32 frame_duration;
     int frames;
@@ -89,11 +91,13 @@ struct Saved_Entity {
 TEX2D(tiles, "tileset_grass.png") \
 TEX2D(coin, "coin.png") \
 TEX2D(ui_coin, "ui_coin.png") \
-TEX2D(spikes, "spikes.png")
+TEX2D(spikes, "spikes.png") \
+TEX2D(plum, "plum.png") \
+TEX2D(plum_dead, "plum_dead.png")
 
 #define MAX_ENTITY_COUNT 255
 #define MAX_COLLIDER_COUNT 255
-#define MAX_CHECKPOINT_COUNT 20
+#define MAX_TRIGGER_COUNT 10
 
 struct Game_State {
     Entity* player;
@@ -107,14 +111,16 @@ struct Game_State {
     Box colliders[MAX_COLLIDER_COUNT];
     int collider_count;
     
-    Box checkpoints[MAX_CHECKPOINT_COUNT];
-    int checkpoint_count;
+    Box triggers[MAX_TRIGGER_COUNT];
+    int trigger_count;
     
     Game_Mode mode;
     s32 cutscene_timer;
     
     v2 camera_p;
     
+    f32 normal_gravity;
+    f32 fall_gravity;
     bool is_moon_gravity;
     
     // Resource
@@ -164,7 +170,8 @@ get_controller(Game_State* game, int gamepad_index=0) {
     
     if (IsGamepadAvailable(gamepad_index)) {
         int jump_button = GAMEPAD_BUTTON_RIGHT_FACE_DOWN;
-        int action_button = GAMEPAD_BUTTON_RIGHT_TRIGGER_1;
+        int action_button = GAMEPAD_BUTTON_RIGHT_TRIGGER_2;
+        
         
         result.dir.x = GetGamepadAxisMovement(gamepad_index, 0);
         result.dir.y = GetGamepadAxisMovement(gamepad_index, 1);
@@ -195,7 +202,7 @@ get_controller(Game_State* game, int gamepad_index=0) {
 }
 
 inline Entity*
-spawn_entity(Game_State* game, Entity_Type type) {
+add_entity(Game_State* game, Entity_Type type) {
     assert(game->entity_count < MAX_ENTITY_COUNT && "too many entities");
     Entity* entity = &game->entities[game->entity_count++];
     *entity = {};
@@ -212,9 +219,9 @@ add_collider(Game_State* game, v2 p, v2 size) {
 }
 
 inline void
-add_checkpoint(Game_State* game, v2 p, v2 size) {
-    assert(game->checkpoint_count < MAX_ENTITY_COUNT && "too many colliders");
-    Box* collider = &game->checkpoints[game->checkpoint_count++];
+add_trigger(Game_State* game, v2 p, v2 size) {
+    assert(game->trigger_count < MAX_ENTITY_COUNT && "too many colliders");
+    Box* collider = &game->triggers[game->trigger_count++];
     collider->p = p;
     collider->size = size;
 }

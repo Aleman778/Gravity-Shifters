@@ -14,7 +14,7 @@ const s32 first_gid = 41;
 const s32 player_gid = 41;
 const s32 player_inverted_gid = 42;
 const Entity_Type gid_to_entity_type[] = {
-    Player, Player, Spikes, Spikes_Top, Coin,
+    Player, Player, Spikes, Spikes_Top, Coin, Enemy_Plum,
 };
 
 void
@@ -43,13 +43,50 @@ configure_entity(Game_State* game, Entity* entity) {
         
         case Spikes_Top: {
             entity->sprite = &game->texture_spikes;
-            entity->sprite_flipv = true;
+            entity->direction.y = -1;
             entity->size = vec2(1.0f, 1.0f);
             entity->is_solid = true;
         } break;
+        
+        case Enemy_Plum: {
+            entity->health = 1;
+            entity->sprite = &game->texture_plum;
+            entity->size = vec2(1.0f, 1.0f);
+            entity->is_rigidbody = true;
+        } break;
+    }
+}
+
+int
+get_tile(Game_State* game, int x, int y) {
+    if (x >= 0 && y >= 0 && x < game->tile_map_width && y < game->tile_map_height) {
+        return game->tile_map[y*game->tile_map_width + x];
+    }
+    return 0;
+}
+
+struct Surround_Tiles {
+    int left;
+    int middle;
+    int right;
+};
+
+Surround_Tiles
+get_floor_tiles(Game_State* game, Entity* entity) {
+    int y_under;
+    if (entity->invert_gravity) {
+        y_under = (int) (entity->p.y - 0.2f);
+    } else {
+        y_under = (int) (entity->p.y + entity->size.y + 0.2f);
     }
     
+    Surround_Tiles result = {};
+    result.left = get_tile(game, (int) entity->p.x - 1, y_under);
+    result.middle = get_tile(game, (int) entity->p.x, y_under);
+    result.right = get_tile(game, (int) entity->p.x + 1, y_under);
+    return result;
 }
+
 
 void
 save_game_state(Game_State* game) {
@@ -57,6 +94,17 @@ save_game_state(Game_State* game) {
         Saved_Entity* saved_entity = &game->saved_entities[i];
         saved_entity->type = entity->type;
         saved_entity->p = entity->p;
+        if (saved_entity->type == Player) {
+            
+            Surround_Tiles s = get_floor_tiles(game, entity);
+            if (s.middle) {
+                saved_entity->p.x = ((int) entity->p.x) + 0.2f;
+            } else if (s.left) {
+                saved_entity->p.x = ((int) entity->p.x - 1) + 0.2f;
+            } else if (s.right) {
+                saved_entity->p.x = ((int) entity->p.x + 1) + 0.2f;
+            }
+        }
         saved_entity->invert_gravity = entity->invert_gravity;
     }
 }
@@ -75,7 +123,7 @@ restore_game_state(Game_State* game) {
 
 Entity*
 convert_tmx_object_to_entity(Game_State* game, Tmx_Object* object) {
-    Entity* entity = spawn_entity(game, None);
+    Entity* entity = add_entity(game, None);
     entity->p = object->p;
     entity->size = object->size;
     s32 index = object->gid - first_gid;
@@ -116,8 +164,8 @@ game_setup_level(Game_State* game, Memory_Arena* level_arena, string filename) {
                 add_collider(game, object->p, object->size);
             } break;
             
-            case TmxObjectGroup_Checkpoints: {
-                add_checkpoint(game, object->p, object->size);
+            case TmxObjectGroup_Triggers: {
+                add_trigger(game, object->p, object->size);
             } break;
         }
     }
@@ -127,33 +175,34 @@ game_setup_level(Game_State* game, Memory_Arena* level_arena, string filename) {
 }
 
 void
-kill_player(Game_State* game) {
-    game->player->health = 0;
+kill_entity(Entity* entity) {
+    entity->health = 0;
 }
 
 void
-update_player(Game_State* game, Entity* entity, Game_Controller* controller) {
-    const f32 gravity = 20;
-    const f32 fall_gravity = 50;
+update_player(Game_State* game, Entity* player, Game_Controller* controller) {
+    const f32 gravity = game->normal_gravity;
+    const f32 fall_gravity = game->fall_gravity;
     const f32 jump_velocity = -14;
     f32 gravity_sign = 1;
-    if (entity->invert_gravity) {
+    if (player->invert_gravity) {
         gravity_sign = -1;
     }
     
     // Jump
-    if (entity->is_grounded && controller->jump_pressed) {
-        entity->velocity.y = jump_velocity*gravity_sign;
-        entity->is_jumping = true;
+    if (player->is_grounded && controller->jump_pressed) {
+        player->velocity.y = jump_velocity*gravity_sign;
+        player->is_jumping = true;
     }
-    if (!controller->jump_down || entity->velocity.y*gravity_sign >= 0.0f) {
-        entity->is_jumping = false;
+    if (!controller->jump_down || player->velocity.y*gravity_sign >= 0.0f) {
+        player->is_jumping = false;
     }
     
     // Change gravity
-    if (entity->is_grounded && controller->action_pressed) {
-        entity->invert_gravity = !entity->invert_gravity;
-        entity->is_grounded = false;
+    if (player->is_grounded && controller->action_pressed) {
+        player->invert_gravity = !player->invert_gravity;
+        player->velocity.y = jump_velocity*gravity_sign;
+        player->is_grounded = false;
     }
     
     
@@ -162,43 +211,61 @@ update_player(Game_State* game, Entity* entity, Game_Controller* controller) {
     // Add jump buffering
     
     // Gravity
-    entity->acceleration.y = gravity*gravity_sign;
-    if (!entity->is_jumping && !entity->is_grounded) {
-        entity->acceleration.y = fall_gravity*gravity_sign;
+    player->acceleration.y = gravity*gravity_sign;
+    if (!player->is_jumping && !player->is_grounded) {
+        player->acceleration.y = fall_gravity*gravity_sign;
     }
     
     // Walking
-    entity->acceleration.x = controller->dir.x * 20.0f;
+    player->acceleration.x = controller->dir.x * 20.0f;
     if (game->is_moon_gravity) {
-        entity->acceleration.x = controller->dir.x * 2.0f;
+        player->acceleration.x = controller->dir.x * 2.0f;
     }
     
     // Run physics
-    update_rigidbody(game, entity);
+    update_rigidbody(game, player);
     
     // Check collisions with entites
-    if (entity->collided_with) {
-        Entity* other = entity->collided_with;
+    if (player->collided_with) {
+        Entity* other = player->collided_with;
         switch (other->type) {
             case Spikes: {
-                if (!other->sprite_flipv && entity->collision == Col_Bottom) {
-                    kill_player(game);
+                if (player->collision == Col_Bottom) {
+                    kill_entity(player);
                 }
-                if (other->sprite_flipv && entity->collision == Col_Top) {
-                    kill_player(game);
+            } break;
+            
+            case Spikes_Top: {
+                if (player->collision == Col_Top) {
+                    kill_entity(player);
+                }
+            } break;
+            
+            case Enemy_Plum: {
+                if (!player->is_grounded && player->collision == Col_Bottom) {
+                    kill_entity(other);
+                    // bounce
+                    if (controller->jump_down) {
+                        player->velocity.y = jump_velocity*gravity_sign;
+                        player->is_jumping = true;
+                    } else {
+                        player->velocity.y = jump_velocity/2.0f*gravity_sign;
+                    }
+                } else {
+                    kill_entity(player);
                 }
             } break;
         }
     }
     
-    if (entity->is_grounded && entity->health > 0) {
+    if (player->is_grounded && player->health > 0) {
         // Save restore point (within checkpoint regions)
-        
-        for_array(game->checkpoints, check, _) {
-            if (box_check(entity->collider, *check)) {
-                save_game_state(game);
-            }
-        }
+        save_game_state(game);
+        //for_array(game->triggres, check, _) {
+        //if (box_check(player->collider, *check)) {
+        //
+        //}
+        //}
     }
     
     // Pickup items
@@ -206,7 +273,7 @@ update_player(Game_State* game, Entity* entity, Game_Controller* controller) {
         Entity* other = &game->entities[j];
         bool collided = false;
         if (other->type == Coin) {
-            collided = box_check(entity->p, entity->p + entity->size, 
+            collided = box_check(player->p, player->p + player->size, 
                                  other->p, other->p + other->size);
         }
         if (!collided) continue;
@@ -221,6 +288,39 @@ update_player(Game_State* game, Entity* entity, Game_Controller* controller) {
 }
 
 void
+update_enemy_plum(Game_State* game, Entity* entity) {
+    if (entity->health <= 0) {
+        entity->type = Enemy_Plum_Dead;
+        entity->sprite = &game->texture_plum_dead;
+        entity->is_rigidbody = false;
+        return;
+    }
+    
+    f32 gravity_sign = 1;
+    if (entity->invert_gravity) {
+        gravity_sign = -1;
+    }
+    
+    if (entity->direction.x == 0) {
+        entity->direction.x = -1.0f;
+    }
+    
+    Surround_Tiles s = get_floor_tiles(game, entity);
+    if (!s.middle) entity->direction.x = 1.0f;
+    if (!s.right) entity->direction.x = -1.0f;
+    
+    entity->acceleration.x = 200.0f * entity->direction.x;
+    entity->acceleration.y = game->normal_gravity * gravity_sign;
+    
+    // Run physics
+    update_rigidbody(game, entity);
+    
+    if (entity->map_collision & (Col_Left | Col_Right)) {
+        entity->direction.x *= -1.0f;
+    }
+}
+
+void
 game_update_and_render_level(Game_State* game) {
     Game_Controller controller = get_controller(game);
     
@@ -231,6 +331,10 @@ game_update_and_render_level(Game_State* game) {
         switch (entity->type) {
             case Player: {
                 update_player(game, entity, &controller);
+            } break;
+            
+            case Enemy_Plum: {
+                update_enemy_plum(game, entity);
             } break;
             
             default: {
@@ -300,7 +404,7 @@ game_update_and_render(Game_State* game, RenderTexture2D render_target) {
     
     // Render game
     BeginTextureMode(render_target);
-    ClearBackground(DARKGRAY);
+    ClearBackground(BACKGROUND_COLOR);
     
     switch (game->mode) {
         case GameMode_Level: {
@@ -329,13 +433,17 @@ int
 main() {
     Game_State game = {};
     game.game_width = 40;
-    game.game_height = 21;
+    game.game_height = 22;
     game.game_scale = 3;
     game.render_width = game.game_width * TILE_SIZE;
     game.render_height = game.game_height * TILE_SIZE;
     game.screen_width = game.render_width * game.game_scale;
     game.screen_height = game.render_height * game.game_scale;
     
+    game.normal_gravity = 20;
+    game.fall_gravity = 50;
+    
+    //InitWindow(1280, 720, "Bigmode Game Jam 2023");
     InitWindow(game.screen_width, game.screen_height, "Bigmode Game Jam 2023");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
@@ -353,12 +461,13 @@ main() {
     RenderTexture2D render_target = LoadRenderTexture(game.render_width, game.render_height);
     SetTextureFilter(render_target.texture, TEXTURE_FILTER_POINT);
     
-    game_setup_level(&game, &level_arena, string_lit("assets/level1.tmx"));
+    game_setup_level(&game, &level_arena, string_lit("assets/level1_2.tmx"));
     
     while (!WindowShouldClose()) {
         
         
         if (IsKeyPressed(KEY_F)) {
+            MaximizeWindow();
             ToggleFullscreen();
         }
         

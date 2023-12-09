@@ -27,10 +27,6 @@
   <object id="2" gid="42" x="80" y="112" width="16" height="16"/>
   <object id="13" gid="43" x="96" y="16" width="16" height="16"/>
  </objectgroup>
- <objectgroup id="3" name="Checkpoints">
-  <object id="6" x="192" y="96" width="64" height="32"/>
-  <object id="8" x="336" y="96" width="64" height="32"/>
- </objectgroup>
  <objectgroup id="4" name="Colliders">
   <object id="10" x="0" y="48" width="272" height="48"/>
   <object id="11" x="320" y="48" width="96" height="48"/>

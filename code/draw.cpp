@@ -53,13 +53,16 @@ draw_entity(Game_State* game, Entity* entity) {
             }
         }
         
-        if (entity->sprite_flipv) {
+        if (entity->direction.x < 0) {
+            src.width = -src.width;
+        }
+        if (entity->direction.y < 0) {
             src.height = -src.height;
         }
         
         Vector2 origin = {};
         DrawTexturePro(*entity->sprite, src, dest, origin, 0, WHITE);
-    } else if (entity->type != Box_Collider) {
+    } else {
         v2s p = to_pixel(game, entity->p);
         v2s size = to_pixel_size(game, entity->size);
         
@@ -73,10 +76,16 @@ draw_texture_to_screen(Game_State* game, RenderTexture2D render_target) {
     
     int width = GetScreenWidth();
     int height = GetScreenHeight();
+    if (IsWindowFullscreen()) {
+        int monitor = GetCurrentMonitor();
+        width = GetMonitorWidth(monitor);
+        height = GetMonitorHeight(monitor);
+        
+    }
     
     // Render to screen
     BeginDrawing();
-    ClearBackground(BACKGROUND_COLOR);
+    ClearBackground(BLACK);
     
     int scale = height / game->render_height;
     //pln("scale = %d", scale);

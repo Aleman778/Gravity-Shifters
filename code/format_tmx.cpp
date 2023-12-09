@@ -4,7 +4,7 @@
 enum Tmx_Object_Group {
     TmxObjectGroup_Entities,
     TmxObjectGroup_Colliders,
-    TmxObjectGroup_Checkpoints
+    TmxObjectGroup_Triggers
 };
 
 struct Tmx_Object {
@@ -128,8 +128,8 @@ read_tmx_map_data(u8* scan, Memory_Arena* arena) {
                         read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Entities);
                     } else if (string_equals(name, string_lit("Colliders"))) {
                         read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Colliders);
-                    } else if (string_equals(name, string_lit("Checkpoints"))) {
-                        read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Checkpoints);
+                    } else if (string_equals(name, string_lit("Triggers"))) {
+                        read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Triggers);
                     } else {
                         //pln("Invalid object group: %", name);
                         assert(0 && "invalid objectgroup found");
