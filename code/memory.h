@@ -60,6 +60,7 @@ push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=
             arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
         }
         
+        assert(!arena->base && "reach end of initial arena block allocation");
         arena->base = (u8*) calloc(1, arena->min_block_size);
         arena->curr_used = 0;
         arena->prev_used = 0;

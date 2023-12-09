@@ -1,12 +1,14 @@
 
 // NOTE(Alexander): hardcoded and may be invalidated whenever tilesets is changed
 
-struct Box {
-    v2 min_p;
-    v2 max_p;
+enum Tmx_Object_Group {
+    TmxObjectGroup_Entities,
+    TmxObjectGroup_Colliders,
+    TmxObjectGroup_Checkpoints
 };
 
 struct Tmx_Object {
+    Tmx_Object_Group group;
     s32 gid; 
     v2 p;
     v2 size;
@@ -57,8 +59,7 @@ read_entire_file(cstring filename) {
 
 //Loaded_Tmx read_tmx_map_data(u8* scan, Memory_Arena* arena);
 void read_tmx_tile_map(u8** scanner, Loaded_Tmx* result);
-void read_tmx_colliders(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result);
-void read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result);
+void read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result, Tmx_Object_Group group);
 
 
 // TODO(Alexander): we are currently storing resulting objects and colliders
@@ -124,9 +125,11 @@ read_tmx_map_data(u8* scan, Memory_Arena* arena) {
                     string name = eat_until(&scan,'"');
                     
                     if (string_equals(name, string_lit("Entities"))) {
-                        read_tmx_objects(&scan, arena, &result);
-                    } else if (string_equals(name, string_lit("Collisions"))) {
-                        read_tmx_colliders(&scan, arena, &result);
+                        read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Entities);
+                    } else if (string_equals(name, string_lit("Colliders"))) {
+                        read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Colliders);
+                    } else if (string_equals(name, string_lit("Checkpoints"))) {
+                        read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Checkpoints);
                     } else {
                         //pln("Invalid object group: %", name);
                         assert(0 && "invalid objectgroup found");
@@ -219,88 +222,8 @@ read_tmx_tile_map(u8** scanner, Loaded_Tmx* result) {
     }
 }
 
-
 void
-read_tmx_colliders(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result) {
-    for (u8* scan = *scanner; *scan; scan++) {
-        if (eat_string(&scan, "</objectgroup>")) {
-            break;
-        }
-        
-        if (eat_string(&scan, "<object")) {
-            Tmx_Object* collider = push_struct(arena, Tmx_Object);
-            collider->gid = 40;
-            result->object_count++;
-            
-            if (!result->objects) {
-                result->objects = collider;
-            }
-            
-            for (; *scan; scan++) {
-                if (eat_string(&scan, "/>") || eat_string(&scan, "</object>")) {
-                    break;
-                }
-                
-                if (eat_string(&scan, " x=\"")) {
-                    f32 x = (f32) eat_integer(&scan);
-                    collider->p.x = x/(f32) result->tile_width;
-                } else if (eat_string(&scan, " y=\"")) {
-                    f32 y = (f32) eat_integer(&scan);
-                    collider->p.y = y/(f32) result->tile_height;
-                } else if (eat_string(&scan, " width=\"")) {
-                    f32 width  = (f32) eat_integer(&scan);
-                    collider->size.width = width/(f32) result->tile_width;
-                } else if (eat_string(&scan, " height=\"")) {
-                    f32 height = (f32) eat_integer(&scan);
-                    collider->size.height = height/(f32) result->tile_height;
-                }
-                
-#if 0 
-                if (eat_string(&scan, "<polygon points=\"")) {
-                    v2 origin = collider->aabb.min;
-                    v2 p0;
-                    p0.x = origin.x + (f32) eat_integer(&scan)/(f32) result->tile_width;
-                    assert(*scan++ == ',');
-                    p0.y = origin.y + (f32) eat_integer(&scan)/(f32) result->tile_height;
-                    v2 first_p = p0;
-                    if (*scan++ == '"') {
-                        break;
-                    }
-                    
-                    for (; *scan && *scan != '"'; scan++) {
-                        if (*scan == ' ') continue;
-                        
-                        v2 p1;
-                        p1.x = origin.x + (f32) eat_integer(&scan)/(f32) result->tile_width;
-                        assert(*scan++ == ',');
-                        p1.y = origin.y + (f32) eat_integer(&scan)/(f32) result->tile_height;
-                        
-                        collider->type = Collider_Type.Line;
-                        collider->line.p = p0;
-                        collider->line.r = p1 - p0;
-                        p0 = p1;
-                        
-                        collider = push_struct(arena, Collider);
-                        result->collider_count++;
-                        
-                        if (*scan == '"') {
-                            scan++;
-                            break;
-                        }
-                    }
-                    
-                    collider->type = Collider_Type.Line;
-                    collider->line.p = p0;
-                    collider->line.r = first_p - p0;
-                }
-#endif
-            }
-        }
-    }
-}
-
-void
-read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result) {
+read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result, Tmx_Object_Group group) {
     for (u8* scan = *scanner; *scan; scan++) {
         if (eat_string(&scan, "</objectgroup>")) {
             break;
@@ -308,6 +231,7 @@ read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result) {
         
         if (eat_string(&scan, "<object")) {
             Tmx_Object* object = push_struct(arena, Tmx_Object);
+            object->group = group;
             result->object_count++;
             
             if (!result->objects) {
@@ -326,7 +250,12 @@ read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result) {
                     object->p.x = x/(f32) result->tile_width;
                 } else if (eat_string(&scan, " y=\"")) {
                     f32 y = (f32) eat_integer(&scan);
-                    object->p.y = y/(f32) result->tile_height - 1.0f;
+                    object->p.y = y/(f32) result->tile_height;
+                    
+                    // wtf tiled why?
+                    if (group == TmxObjectGroup_Entities) {
+                        object->p.y -= 1.0f;
+                    }
                 }
                 else if (eat_string(&scan, " width=\"")) {
                     f32 width = (f32) eat_integer(&scan);

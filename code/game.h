@@ -7,8 +7,8 @@
 enum Entity_Type {
     None = 0,
     Player,
-    Player_Start,
     Spikes,
+    Spikes_Top,
     Coin,
     Box_Collider
 };
@@ -21,7 +21,6 @@ enum Entity_Layer {
     Layer_Count,
 };
 
-
 enum Collision_Result {
     Col_None,
     Col_Left,
@@ -30,19 +29,34 @@ enum Collision_Result {
     Col_Bottom,
 };
 
+struct Box {
+    v2 p;
+    v2 size;
+};
+
 struct Entity {
     // Physics/ collider (and render shape)
     Entity* collided_with;
     Collision_Result collision;
     
-    v2 p;
-    v2 size;
+    union {
+        struct {
+            v2 p;
+            v2 size;
+        };
+        Box collider;
+    };
     v2 velocity;
     v2 acceleration;
     v2 max_speed;
     
+    bool invert_gravity;
+    f32 gravity;
+    f32 fall_gravity;
+    
     // Rendering
     Texture2D* sprite;
+    bool sprite_flipv;
     f32 frame_advance;
     f32 frame_duration;
     int frames;
@@ -50,13 +64,26 @@ struct Entity {
     Entity_Type type;
     Entity_Layer layer;
     
-    bool collided;
+    s32 health;
+    s32 coins;
+    int safe_frames;
+    
+    bool is_solid;
     bool is_rigidbody;
     bool is_grounded;
     bool is_jumping;
 };
 
-#define MAX_ENTITY_COUNT 255
+enum Game_Mode {
+    GameMode_Level,
+    GameMode_Death_Screen,
+};
+
+struct Saved_Entity {
+    Entity_Type type;
+    v2 p;
+    bool invert_gravity;
+};
 
 #define DEF_TEXUTRE2D \
 TEX2D(tiles, "tileset_grass.png") \
@@ -64,6 +91,9 @@ TEX2D(coin, "coin.png") \
 TEX2D(ui_coin, "ui_coin.png") \
 TEX2D(spikes, "spikes.png")
 
+#define MAX_ENTITY_COUNT 255
+#define MAX_COLLIDER_COUNT 255
+#define MAX_CHECKPOINT_COUNT 20
 
 struct Game_State {
     Entity* player;
@@ -71,14 +101,21 @@ struct Game_State {
     Entity entities[MAX_ENTITY_COUNT];
     int entity_count;
     
+    Saved_Entity saved_entities[MAX_ENTITY_COUNT];
+    //int saved_entity_count;
+    
+    Box colliders[MAX_COLLIDER_COUNT];
+    int collider_count;
+    
+    Box checkpoints[MAX_CHECKPOINT_COUNT];
+    int checkpoint_count;
+    
+    Game_Mode mode;
+    s32 cutscene_timer;
+    
     v2 camera_p;
     
-    f32 gravity;
-    f32 fall_gravity;
     bool is_moon_gravity;
-    f32 jump_velocity;
-    
-    int coins;
     
     // Resource
 #define TEX2D(name, ...) Texture2D texture_##name;
@@ -102,6 +139,12 @@ struct Game_State {
     f32 pixels_to_meters;
 };
 
+#define for_array(arr, it, it_index) \
+int it_index = 0; \
+for (auto it = arr; \
+it_index < fixed_array_count(arr); \
+it_index++, it++)
+
 void game_draw_ui(Game_State* game, f32 scale);
 
 struct Game_Controller {
@@ -109,6 +152,7 @@ struct Game_Controller {
     
     bool jump_pressed;
     bool jump_down;
+    bool action_pressed;
     
     bool is_gamepad;
 };
@@ -120,11 +164,13 @@ get_controller(Game_State* game, int gamepad_index=0) {
     
     if (IsGamepadAvailable(gamepad_index)) {
         int jump_button = GAMEPAD_BUTTON_RIGHT_FACE_DOWN;
+        int action_button = GAMEPAD_BUTTON_RIGHT_TRIGGER_1;
         
         result.dir.x = GetGamepadAxisMovement(gamepad_index, 0);
         result.dir.y = GetGamepadAxisMovement(gamepad_index, 1);
         result.jump_pressed = IsGamepadButtonPressed(gamepad_index, jump_button);
         result.jump_down = IsGamepadButtonDown(gamepad_index, jump_button);
+        result.action_pressed = IsGamepadButtonPressed(gamepad_index, action_button);
         
     } else {
         //int left = KEY_LEFT;
@@ -136,11 +182,14 @@ get_controller(Game_State* game, int gamepad_index=0) {
         int key_up = KEY_W;
         int key_down = KEY_S;
         int key_jump = KEY_SPACE;
+        int key_action = KEY_ENTER;
         
         result.dir.x = IsKeyDown(key_left)*-1.0f + IsKeyDown(key_right)*1.0f;
         result.dir.y = IsKeyDown(key_up)*-1.0f + IsKeyDown(key_down)*1.0f;
         result.jump_pressed = IsKeyPressed(key_jump);
         result.jump_down = IsKeyDown(key_jump);
+        
+        result.action_pressed = IsKeyPressed(key_action);
     }
     return result;
 }
@@ -152,6 +201,22 @@ spawn_entity(Game_State* game, Entity_Type type) {
     *entity = {};
     entity->type = type;
     return entity;
+}
+
+inline void
+add_collider(Game_State* game, v2 p, v2 size) {
+    assert(game->collider_count < MAX_ENTITY_COUNT && "too many colliders");
+    Box* collider = &game->colliders[game->collider_count++];
+    collider->p = p;
+    collider->size = size;
+}
+
+inline void
+add_checkpoint(Game_State* game, v2 p, v2 size) {
+    assert(game->checkpoint_count < MAX_ENTITY_COUNT && "too many colliders");
+    Box* collider = &game->checkpoints[game->checkpoint_count++];
+    collider->p = p;
+    collider->size = size;
 }
 
 inline s32

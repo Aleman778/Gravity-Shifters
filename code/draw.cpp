@@ -53,6 +53,10 @@ draw_entity(Game_State* game, Entity* entity) {
             }
         }
         
+        if (entity->sprite_flipv) {
+            src.height = -src.height;
+        }
+        
         Vector2 origin = {};
         DrawTexturePro(*entity->sprite, src, dest, origin, 0, WHITE);
     } else if (entity->type != Box_Collider) {
