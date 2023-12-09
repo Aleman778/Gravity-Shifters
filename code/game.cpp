@@ -260,12 +260,22 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
     
     if (player->is_grounded && player->health > 0) {
         // Save restore point (within checkpoint regions)
-        save_game_state(game);
-        //for_array(game->triggres, check, _) {
-        //if (box_check(player->collider, *check)) {
-        //
-        //}
-        //}
+        bool is_nearby_enemy = false;
+        for_array(game->entities, other, _) {
+            if (other->type == Enemy_Plum) {
+                Box area = other->collider;
+                area.p -= 5.0f;
+                area.size += 10.0f;
+                
+                if (box_check(player->collider, area)) {
+                    is_nearby_enemy = true;
+                }
+            }
+        }
+        
+        if (!is_nearby_enemy) {
+            save_game_state(game);
+        }
     }
     
     // Pickup items
@@ -314,6 +324,10 @@ update_enemy_plum(Game_State* game, Entity* entity) {
     
     // Run physics
     update_rigidbody(game, entity);
+    
+    if (entity->collided_with && entity->collided_with->type == Player) {
+        kill_entity(entity->collided_with);
+    }
     
     if (entity->map_collision & (Col_Left | Col_Right)) {
         entity->direction.x *= -1.0f;
@@ -434,7 +448,7 @@ main() {
     Game_State game = {};
     game.game_width = 40;
     game.game_height = 22;
-    game.game_scale = 3;
+    game.game_scale = 2;
     game.render_width = game.game_width * TILE_SIZE;
     game.render_height = game.game_height * TILE_SIZE;
     game.screen_width = game.render_width * game.game_scale;
