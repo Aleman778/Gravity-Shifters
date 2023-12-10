@@ -118,25 +118,26 @@ check_tilemap_collision(Game_State* game, Entity* entity, v2* step_velocity) {
     return result;
 }
 
-
-bool
+void
 check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
-    bool result = false;
     entity->is_grounded = false;
     entity->collided_with = 0;
     entity->collision = Col_None;
     entity->map_collision = Col_None;
     
-    for_array(game->colliders, other, _) {
+    for_array(game->colliders, other, col_index) {
+        if (col_index >= game->collider_count) break;
+        
         Collision collision = box_collision(entity, *other, step_velocity, true, Col_All);
         if (collision) {
             entity->map_collision = entity->map_collision | collision;
-            result = true;
         }
     }
     
-    for_array(game->entities, other, _2) {
-        if (other != entity && (other->is_rigidbody || other->is_solid)) {
+    for_array(game->entities, other, entity_index) {
+        if (entity_index >= game->entity_count) break;
+        
+        if (other != entity && (other->is_rigidbody || other->is_solid || other->is_trigger)) {
             Box other_collider = other->collider;
             other_collider.p += other->offset;
             Collision mask = other->collision_mask;
@@ -144,23 +145,24 @@ check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
                 mask = Col_All;
             }
             
-            Collision collision = box_collision(entity, other_collider, 
-                                                step_velocity, !other->is_rigidbody, mask);
-            if (collision) {
-                entity->collided_with = other;
-                entity->collision = collision;
-                result = true;
+            if (other->is_trigger) {
+                if (box_check(entity->collider, other_collider)) {
+                    entity->collided_with = other;
+                    entity->collision = Col_All;
+                }
+            } else {
+                Collision collision = box_collision(entity, other_collider, step_velocity, !other->is_rigidbody, mask);
+                if (collision) {
+                    entity->collided_with = other;
+                    entity->collision = collision;
+                }
             }
         }
     }
     
     // Collision with the tiles
-    bool tilemap_result = check_tilemap_collision(game, entity, step_velocity);
-    result = result | tilemap_result;
-    
-    return result;
+    //check_tilemap_collision(game, entity, step_velocity);
 }
-
 
 void
 update_rigidbody(Game_State* game, Entity* entity) {

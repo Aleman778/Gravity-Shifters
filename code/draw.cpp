@@ -83,7 +83,14 @@ draw_entity(Game_State* game, Entity* entity) {
         default: {
             if (entity->sprite) {
                 int frame = get_frame_index(entity);
-                draw_sprite(game, entity->sprite, entity->p, entity->size, entity->direction, frame);
+                v2 dir = entity->direction;
+                if (dir.y > 0 && entity->invert_gravity) {
+                    dir.y = -1;
+                }
+                if (dir.y < 0 && !entity->invert_gravity) {
+                    dir.y = 1;
+                }
+                draw_sprite(game, entity->sprite, entity->p, entity->size, dir, frame);
             } else {
                 v2s p = to_pixel(game, entity->p);
                 v2s size = to_pixel_size(game, entity->size);

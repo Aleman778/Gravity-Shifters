@@ -13,6 +13,8 @@ enum Entity_Type {
     Enemy_Plum,
     Enemy_Plum_Dead,
     Vine,
+    Gravity_Normal,
+    Gravity_Inverted,
 };
 
 enum Entity_Layer {
@@ -71,11 +73,11 @@ struct Entity {
     Entity_Layer layer;
     
     s32 health;
-    s32 coins;
     int safe_frames;
     
     Collision collision_mask; // make solid on certain directions
     bool is_solid;
+    bool is_trigger;
     bool is_rigidbody;
     bool is_grounded;
     bool is_jumping;
@@ -122,6 +124,9 @@ struct Game_State {
     
     Game_Mode mode;
     s32 cutscene_timer;
+    
+    s32 coins;
+    s32 saved_coins;
     
     v2 camera_p;
     
