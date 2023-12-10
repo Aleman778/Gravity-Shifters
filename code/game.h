@@ -18,9 +18,8 @@ enum Entity_Type {
 };
 
 enum Entity_Layer {
+    Layer_Entity,
     Layer_Background,
-    Layer_Player,
-    Layer_Foreground,
     
     Layer_Count,
 };
@@ -38,6 +37,17 @@ enum Collision {
 struct Box {
     v2 p;
     v2 size;
+};
+
+struct Trigger {
+    union {
+        struct {
+            v2 p;
+            v2 size;
+        };
+        Box collider;
+    };
+    string tag;
 };
 
 struct Entity {
@@ -73,7 +83,6 @@ struct Entity {
     Entity_Layer layer;
     
     s32 health;
-    int safe_frames;
     
     Collision collision_mask; // make solid on certain directions
     bool is_solid;
@@ -85,6 +94,7 @@ struct Entity {
 
 enum Game_Mode {
     GameMode_Level,
+    GameMode_Cutscene_Ability,
     GameMode_Death_Screen,
 };
 
@@ -96,13 +106,16 @@ struct Saved_Entity {
 };
 
 #define DEF_TEXUTRE2D \
-TEX2D(tiles, "tileset_grass.png") \
-TEX2D(coin, "coin.png") \
+TEX2D(tiles, "tileset_rock.png") \
+TEX2D(character, "character1.png") \
+TEX2D(character_inv, "character2.png") \
+TEX2D(coin, "moon_coin.png") \
 TEX2D(ui_coin, "ui_coin.png") \
 TEX2D(spikes, "spikes.png") \
 TEX2D(plum, "plum.png") \
 TEX2D(plum_dead, "plum_dead.png") \
-TEX2D(vine, "vine.png")
+TEX2D(vine, "vine.png") \
+TEX2D(space, "space.png") \
 
 struct Game_State {
     Entity* player;
@@ -113,22 +126,28 @@ struct Game_State {
     Saved_Entity saved_entities[255];
     //int saved_entity_count;
     
+    bool ability_unlock_gravity;
+    
     Box colliders[255];
     int collider_count;
     
     Box checkpoints[20];
     int checkpoint_count;
     
-    Box triggers[10];
+    Trigger triggers[10];
     int trigger_count;
     
     Game_Mode mode;
-    s32 cutscene_timer;
+    f32 mode_timer;
     
     s32 coins;
     s32 saved_coins;
     
     v2 camera_p;
+    
+    v2 final_render_offset;
+    f32 final_render_zoom;
+    f32 final_render_rot;
     
     f32 normal_gravity;
     f32 fall_gravity;
@@ -155,6 +174,15 @@ struct Game_State {
     f32 meters_to_pixels;
     f32 pixels_to_meters;
 };
+
+inline void
+set_game_mode(Game_State* game, Game_Mode mode) {
+    game->mode = mode;
+    game->mode_timer = 0.0f;
+    game->final_render_offset = {};
+    game->final_render_zoom = 1.0f;
+    game->final_render_rot = 0.0f;
+}
 
 #define for_array(arr, it, it_index) \
 int it_index = 0; \
@@ -215,7 +243,7 @@ get_controller(Game_State* game, int gamepad_index=0) {
 inline Entity*
 add_entity(Game_State* game, Entity_Type type) {
     assert(game->entity_count < fixed_array_count(game->entities) && "too many entities");
-    Entity* entity = &game->entities[game->entity_count++];
+    Entity* entity = &game->entities[game->entity_count++]; 
     *entity = {};
     entity->type = type;
     return entity;
@@ -230,11 +258,12 @@ add_collider(Game_State* game, v2 p, v2 size) {
 }
 
 inline void
-add_trigger(Game_State* game, v2 p, v2 size) {
+add_trigger(Game_State* game, v2 p, v2 size, string tag) {
     assert(game->trigger_count < fixed_array_count(game->triggers) && "too many triggers");
-    Box* collider = &game->triggers[game->trigger_count++];
-    collider->p = p;
-    collider->size = size;
+    Trigger* trigger = &game->triggers[game->trigger_count++];
+    trigger->p = p;
+    trigger->size = size;
+    trigger->tag = tag;
 }
 
 inline void
@@ -252,20 +281,26 @@ round_f32_to_s32(f32 value) {
 
 inline v2
 to_pixel_v2(Game_State* game, v2 world_p) {
-    return (world_p - game->camera_p) * game->meters_to_pixels;
+    v2 result = (world_p - game->camera_p) * game->meters_to_pixels;
+    result.x = floorf(result.x);
+    result.y = floorf(result.y);
+    return result;
 }
 
 inline v2
 to_pixel_size_v2(Game_State* game, v2 world_p) {
-    return world_p * game->meters_to_pixels;
+    v2 result = world_p * game->meters_to_pixels;
+    result.x = floorf(result.x);
+    result.y = floorf(result.y);
+    return result;
 }
 
 inline v2s
 to_pixel(Game_State* game, v2 world_p) {
     v2 p = (world_p - game->camera_p) * game->meters_to_pixels;
     v2s result;
-    result.x = round_f32_to_s32(p.x);
-    result.y = round_f32_to_s32(p.y);
+    result.x = (int) p.x;
+    result.y = (int) p.y;
     return result;
 }
 
@@ -273,7 +308,7 @@ inline v2s
 to_pixel_size(Game_State* game, v2 world_p) {
     v2 p = world_p * game->meters_to_pixels;
     v2s result;
-    result.x = round_f32_to_s32(p.x);
-    result.y = round_f32_to_s32(p.y);
+    result.x = (int) p.x;
+    result.y = (int) p.y;
     return result;
 }

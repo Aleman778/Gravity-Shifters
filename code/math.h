@@ -1,12 +1,5 @@
 #include <math.h>
 
-#define PI_F32 3.1415926535897932385f
-
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define max(a, b) ((a) > (b) ? (a) : (b))
-#define sign(value) ((value) < 0 ? -1 : ((value) > 0 ? 1 : 0 ))
-
-
 f32
 random_f32() {
     return (f32) rand() / (RAND_MAX + 1.0f);

@@ -3,6 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PI_F32 3.1415926535897932385f
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define sign(value) ((value) < 0 ? -1 : ((value) > 0 ? 1 : 0 ))
 
 #if BUILD_DEBUG
 #define pln(format, ...) printf(format##"\n", __VA_ARGS__)
@@ -75,6 +80,19 @@ cstring_to_string(cstring str) {
     result.count = cstring_count(str);
     return result;
 }
+
+inline int
+string_compare(string a, string b) {
+    smm count = min(a.count, b.count);
+    for (smm i = 0; i < count; i++) {
+        if (a.data[i] != b.data[i]) {
+            return b.data[i] - a.data[i];
+        }
+    }
+    
+    return (int) (b.count - a.count);
+}
+#define string_equals(a, b) (string_compare(a, b) == 0)
 
 inline void
 cstring_free(cstring str) {

@@ -83,6 +83,14 @@ push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=
     return result;
 }
 
+string
+push_string(Memory_Arena* arena, string s) {
+    void* data = push_size(arena, s.count, 1);
+    memcpy(data, s.data, s.count);
+    s.data = (u8*) data;
+    return s;
+}
+
 #define push_struct(arena, type) (type*) push_size(arena, sizeof(type), alignof(type))
 #define push_array_of_structs(arena, count, type) (type*) push_size(arena, count*sizeof(type), alignof(type))
 

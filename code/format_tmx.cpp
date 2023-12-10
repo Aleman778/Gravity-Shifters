@@ -13,6 +13,7 @@ struct Tmx_Object {
     s32 gid; 
     v2 p;
     v2 size;
+    string name;
 };
 
 struct Loaded_Tmx {
@@ -34,22 +35,6 @@ struct Read_File_Result {
     void* contents;
     int contents_size;
 };
-
-bool
-string_equals(string a, string b) {
-    if (a.count != b.count) {
-        return false;
-    }
-    
-    for (smm index = 0; index < a.count; index++) {
-        if (a.data[index] != b.data[index]) {
-            return false;
-        }
-    }
-    
-    return true;
-}
-
 
 Read_File_Result
 read_entire_file(cstring filename) {
@@ -253,12 +238,14 @@ read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result, Tmx_Obje
                     break;
                 }
                 
-                if (eat_string(&scan, "gid=\"")) {
+                if (eat_string(&scan, "name=\"")) {
+                    object->name = push_string(arena, eat_until(&scan,'"'));
+                } else if (eat_string(&scan, "gid=\"")) {
                     object->gid = eat_integer(&scan);
-                } else if (eat_string(&scan, " x=\"")) {
+                } else if (eat_string(&scan, "x=\"")) {
                     f32 x = (f32) eat_integer(&scan);
                     object->p.x = x/(f32) result->tile_width;
-                } else if (eat_string(&scan, " y=\"")) {
+                } else if (eat_string(&scan, "y=\"")) {
                     f32 y = (f32) eat_integer(&scan);
                     object->p.y = y/(f32) result->tile_height;
                     
@@ -266,11 +253,10 @@ read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result, Tmx_Obje
                     if (group == TmxObjectGroup_Entities) {
                         object->p.y -= 1.0f;
                     }
-                }
-                else if (eat_string(&scan, " width=\"")) {
+                } else if (eat_string(&scan, "width=\"")) {
                     f32 width = (f32) eat_integer(&scan);
                     object->size.width = width/(f32) result->tile_width;
-                } else if (eat_string(&scan, " height=\"")) {
+                } else if (eat_string(&scan, "height=\"")) {
                     f32 height = (f32) eat_integer(&scan);
                     object->size.height = height/(f32) result->tile_height; 
                 }

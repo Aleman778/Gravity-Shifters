@@ -21,7 +21,7 @@ void
 configure_entity(Game_State* game, Entity* entity) {
     switch (entity->type) {
         case Player: {
-            entity->size = vec2(0.6f, 1.5f);
+            entity->size = vec2(0.6f, 1.25f);
             entity->health = 1;
             entity->is_rigidbody = true;
             entity->max_speed.x = 5.0f;
@@ -29,14 +29,16 @@ configure_entity(Game_State* game, Entity* entity) {
             if (!entity->invert_gravity) {
                 entity->p.y -= entity->size.y - 1.0f;
             }
+            entity->sprite = &game->texture_character;
             game->player = entity;
         } break;
         
         case Coin: {
             entity->sprite = &game->texture_coin;
-            entity->frames = 5;
+            entity->frames = 8;
+            entity->frame_duration = 0.1f;
             entity->size = vec2(1.0f, 1.0f);
-            entity->frame_duration = 2.0f;
+            entity->offset = {};
             entity->is_trigger = true;
         } break;
         
@@ -78,14 +80,15 @@ configure_entity(Game_State* game, Entity* entity) {
         
         case Gravity_Normal:
         case Gravity_Inverted: {
-            entity->sprite = &game->texture_vine;
+            entity->layer = Layer_Background;
+            entity->sprite = &game->texture_space;
             entity->size = vec2(1.0f, 1.0f);
             entity->offset.y += entity->type == Gravity_Inverted ? -0.2f : 0.2f;
             entity->is_trigger = true;
+            entity->is_solid = false;
         } break;
     }
 }
-
 
 int
 get_tile(Game_State* game, int x, int y) {
@@ -102,7 +105,7 @@ struct Surround_Tiles {
 };
 
 Surround_Tiles
-get_floor_tiles(Game_State* game, Entity* entity, f32 range=1.0f) {
+get_floor_tiles(Game_State* game, Entity* entity, f32 range=0.5f) {
     int y_under;
     if (entity->invert_gravity) {
         y_under = (int) (entity->p.y - 0.2f);
@@ -211,7 +214,7 @@ game_setup_level(Game_State* game, Memory_Arena* level_arena, string filename) {
             } break;
             
             case TmxObjectGroup_Triggers: {
-                add_trigger(game, object->p, object->size);
+                add_trigger(game, object->p, object->size, object->name);
             } break;
             
             case TmxObjectGroup_Checkpoints: {
@@ -248,8 +251,8 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
         player->is_jumping = false;
     }
     
-    // Change gravity
-    if (player->is_grounded && controller->action_pressed) {
+    // Invert gravity
+    if (controller->action_pressed && player->is_grounded && game->ability_unlock_gravity) {
         player->invert_gravity = !player->invert_gravity;
         player->velocity.y = jump_velocity*gravity_sign;
         player->is_grounded = false;
@@ -267,9 +270,14 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
     }
     
     // Walking
-    player->acceleration.x = controller->dir.x * 20.0f;
-    if (game->is_moon_gravity) {
-        player->acceleration.x = controller->dir.x * 2.0f;
+    if (fabsf(controller->dir.x) > 0.3f) {
+        player->direction.x = controller->dir.x;
+        player->acceleration.x = controller->dir.x * 20.0f;
+        if (game->is_moon_gravity) {
+            player->acceleration.x = controller->dir.x * 2.0f;
+        }
+    } else {
+        player->acceleration.x = 0.0f;
     }
     
     // Run physics
@@ -358,6 +366,21 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
             }
         }
     }
+    
+    // Check triggers
+    if (player->is_grounded && player->health > 0) {
+        for_array(game->triggers, trigger, trigger_index) {
+            if (trigger_index >= game->trigger_count) break;
+            if (box_check(player->collider, trigger->collider)) {
+                
+                if (string_equals(trigger->tag, string_lit("ability"))) {
+                    if (!game->ability_unlock_gravity) {
+                        set_game_mode(game, GameMode_Cutscene_Ability);
+                    }
+                }
+            }
+        }
+    }
 }
 
 void
@@ -418,7 +441,69 @@ update_enemy_plum(Game_State* game, Entity* entity) {
 }
 
 void
-game_update_and_render_level(Game_State* game) {
+render_level(Game_State* game, bool skip_enemies=false) {
+    for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
+        Entity* entity = &game->entities[entity_index];
+        draw_entity(game, entity, Layer_Background);
+    }
+    
+    draw_tilemap(game);
+    
+    for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
+        Entity* entity = &game->entities[entity_index];
+        
+        if (skip_enemies && (entity->type == Enemy_Plum ||
+                             entity->type == Enemy_Plum_Dead)) {
+            continue;
+        }
+        
+        draw_entity(game, entity, Layer_Entity);
+    }
+}
+
+void
+center_camera_on_entity(Game_State* game, Entity* entity) {
+    game->camera_p.x = entity->p.x - game->game_width/2.0f;
+    game->camera_p.y = entity->p.y - game->game_height/2.0f;
+}
+
+void
+camera_lock_y_to_zero(Game_State* game) {
+    game->camera_p.y = 0;
+}
+
+void
+camera_follow_entity_x(Game_State* game, Entity* entity, f32 camera_max_offset=2) {
+    f32 camera_offset = game->camera_p.x - (entity->p.x - game->game_width/2.0f);
+    if (camera_offset < -camera_max_offset) {
+        game->camera_p.x = entity->p.x - game->game_width/2.0f - camera_max_offset;
+    }
+    if (camera_offset > camera_max_offset) {
+        game->camera_p.x = entity->p.x - game->game_width/2.0f + camera_max_offset;
+    }
+    
+    if (game->camera_p.x < 0) {
+        game->camera_p.x = 0;
+    }
+}
+
+void
+camera_follow_entity_y(Game_State* game, Entity* entity, f32 camera_max_offset=2) {
+    f32 camera_offset = game->camera_p.y - (entity->p.y - game->game_width/2.0f);
+    if (camera_offset < -camera_max_offset) {
+        game->camera_p.y = entity->p.y - game->game_width/2.0f - camera_max_offset;
+    }
+    if (camera_offset > camera_max_offset) {
+        game->camera_p.y = entity->p.y - game->game_width/2.0f + camera_max_offset;
+    }
+    
+    if (game->camera_p.y < 0) {
+        game->camera_p.y = 0;
+    }
+}
+
+void
+update_and_render_level(Game_State* game) {
     Game_Controller controller = get_controller(game);
     
     // Update game
@@ -464,10 +549,9 @@ game_update_and_render_level(Game_State* game) {
         
         // Update animations
         if (entity->frames > 1) {
-            entity->frame_advance += GetFrameTime();
-            f32 anim_duration = entity->frame_duration * entity->frames;
-            if (entity->frame_advance > anim_duration) {
-                entity->frame_advance -= anim_duration;
+            entity->frame_advance += GetFrameTime() * (1.0f / entity->frame_duration);
+            if (entity->frame_advance >= entity->frames) {
+                entity->frame_advance -= entity->frames;
             }
         }
         
@@ -483,49 +567,54 @@ game_update_and_render_level(Game_State* game) {
     }
     
     if (game->player->health <= 0) {
-        game->mode = GameMode_Death_Screen;
+        set_game_mode(game, GameMode_Death_Screen);
     }
     
-    for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
-        Entity* entity = &game->entities[entity_index];
-        
-        
-    }
+    camera_follow_entity_x(game, game->player);
+    camera_lock_y_to_zero(game);
     
-    // Camera
-    const f32 camera_max_offset = 2;
-    f32 camera_offset = game->camera_p.x - (game->player->p.x - game->game_width/2.0f);
-    if (camera_offset < -camera_max_offset) {
-        game->camera_p.x = game->player->p.x - game->game_width/2.0f - camera_max_offset;
-    }
-    if (camera_offset > camera_max_offset) {
-        game->camera_p.x = game->player->p.x - game->game_width/2.0f + camera_max_offset;
-    }
-    
-    if (game->camera_p.x < 0) {
-        game->camera_p.x = 0;
-    }
-    
-    draw_tilemap(game);
-    
-    for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
-        Entity* entity = &game->entities[entity_index];
-        draw_entity(game, entity);
-    }
+    render_level(game);
 }
 
 void
-game_update_and_render_death_screen(Game_State* game) {
+update_and_render_death_screen(Game_State* game) {
     // Play death animation and restore gameplay
     restore_game_state(game);
+    render_level(game);
     
-    draw_tilemap(game);
-    for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
-        Entity* entity = &game->entities[entity_index];
-        draw_entity(game, entity);
+    set_game_mode(game, GameMode_Level);
+}
+
+
+void
+update_and_render_cutscene_ability(Game_State* game) {
+    
+    game->final_render_offset = vec2(0.5f, 0.5f);
+    game->final_render_zoom = 2.0f;
+    
+    if (game->mode_timer > 1.5f) {
+        camera_follow_entity_x(game, game->player, 10);
+        f32 target = 65.0f;
+        
+        Entity* player = game->player;
+        if (player->p.x < target) {
+            player->acceleration.x = 10.0f;
+        } else {
+            player->acceleration.x = 0.0f;
+        }
+        
+        update_rigidbody(game, player);
+    } else {
+        center_camera_on_entity(game, game->player);
     }
     
-    game->mode = GameMode_Level;
+    if (game->mode_timer > 3.0f) {
+        unimplemented;
+        //v2 top = to_pixel_v2(game, );
+        //DrawRectangle();
+    }
+    
+    render_level(game, true);
 }
 
 
@@ -538,13 +627,19 @@ game_update_and_render(Game_State* game, RenderTexture2D render_target) {
     
     switch (game->mode) {
         case GameMode_Level: {
-            game_update_and_render_level(game);
+            update_and_render_level(game);
         } break;
         
         case GameMode_Death_Screen: {
-            game_update_and_render_death_screen(game);
+            update_and_render_death_screen(game);
+        } break;
+        
+        case GameMode_Cutscene_Ability: {
+            update_and_render_cutscene_ability(game);
         } break;
     }
+    
+    game->mode_timer += GetFrameTime();
     
     EndTextureMode();
 }
@@ -586,11 +681,16 @@ main() {
     game.normal_gravity = 20;
     game.fall_gravity = 50;
     
-    //InitWindow(1280, 720, "Bigmode Game Jam 2023");
+    set_game_mode(&game, GameMode_Level);
+    
+    
+    SetConfigFlags(FLAG_VSYNC_HINT);
     InitWindow(game.screen_width, game.screen_height, "Bigmode Game Jam 2023");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
-    SetTargetFPS(60);
     
+    //int monitor = GetCurrentMonitor();
+    //int target_fps = GetMonitorRefreshRate(monitor);
+    //SetTargetFPS(60);
     SetExitKey(0);
     
     Memory_Arena level_arena = {};
@@ -610,8 +710,6 @@ main() {
     game_setup_level(&game, &level_arena, string_lit(filename));
     
     while (!WindowShouldClose()) {
-        
-        
         if (IsKeyPressed(KEY_F)) {
             MaximizeWindow();
             ToggleFullscreen();
@@ -634,6 +732,10 @@ main() {
         
         game_update_and_render(&game, render_target);
         draw_texture_to_screen(&game, render_target);
+    }
+    
+    if (IsWindowFullscreen()) {
+        ToggleFullscreen();
     }
     
     CloseWindow();

@@ -136,6 +136,7 @@ check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
     
     for_array(game->entities, other, entity_index) {
         if (entity_index >= game->entity_count) break;
+        if (other->type == None) continue;
         
         if (other != entity && (other->is_rigidbody || other->is_solid || other->is_trigger)) {
             Box other_collider = other->collider;
@@ -146,7 +147,7 @@ check_collisions(Game_State* game, Entity* entity, v2* step_velocity) {
             }
             
             if (other->is_trigger) {
-                if (box_check(entity->collider, other_collider)) {
+                if (box_check(entity->collider, other->collider)) {
                     entity->collided_with = other;
                     entity->collision = Col_All;
                 }
