@@ -8,6 +8,7 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define sign(value) ((value) < 0 ? -1 : ((value) > 0 ? 1 : 0 ))
+#define clamp(value, min, max) ((value) < (min) ? (min) : ((value) > (max) ? (max) : (value)))
 
 #if BUILD_DEBUG
 #define pln(format, ...) printf(format##"\n", __VA_ARGS__)

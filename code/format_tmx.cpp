@@ -239,9 +239,10 @@ read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result, Tmx_Obje
                 }
                 
                 if (eat_string(&scan, "name=\"")) {
-                    object->name = push_string(arena, eat_until(&scan,'"'));
+                    object->name = push_string(arena, eat_until_excluding_end(&scan,'"'));
                 } else if (eat_string(&scan, "gid=\"")) {
                     object->gid = eat_integer(&scan);
+                    pln("gid=%d", object->gid);
                 } else if (eat_string(&scan, "x=\"")) {
                     f32 x = (f32) eat_integer(&scan);
                     object->p.x = x/(f32) result->tile_width;

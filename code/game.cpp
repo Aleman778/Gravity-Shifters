@@ -6,6 +6,7 @@
 
 #include "game.h"
 
+#include "particles.cpp"
 #include "format_tmx.cpp"
 #include "physics.cpp"
 #include "draw.cpp"
@@ -175,8 +176,13 @@ convert_tmx_object_to_entity(Game_State* game, Tmx_Object* object) {
         
         if (object->gid == player_inverted_gid) {
             entity->invert_gravity = true;
-        } 
+        }
         configure_entity(game, entity);
+        
+        if (object->name.data) {
+            entity->tag = &object->name;
+            pln("TAG: %.*s", (int) entity->tag->count, entity->tag->data);
+        }
     } else {
         pln("warning: unknown object (gid=%d) at %f, %f", object->gid, object->p.x, object->p.y);
     }
@@ -441,13 +447,21 @@ update_enemy_plum(Game_State* game, Entity* entity) {
 }
 
 void
-render_level(Game_State* game, bool skip_enemies=false) {
+render_level(Game_State* game, bool skip_enemies=false, bool skip_tilemap=false) {
     for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
         Entity* entity = &game->entities[entity_index];
+        
+        if (skip_tilemap && (entity->type == Gravity_Normal ||
+                             entity->type == Gravity_Inverted)) {
+            continue;
+        }
+        
         draw_entity(game, entity, Layer_Background);
     }
     
-    draw_tilemap(game);
+    if (!skip_tilemap) {
+        draw_tilemap(game);
+    }
     
     for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
         Entity* entity = &game->entities[entity_index];
@@ -461,10 +475,42 @@ render_level(Game_State* game, bool skip_enemies=false) {
     }
 }
 
-void
+inline void
 center_camera_on_entity(Game_State* game, Entity* entity) {
     game->camera_p.x = entity->p.x - game->game_width/2.0f;
     game->camera_p.y = entity->p.y - game->game_height/2.0f;
+}
+
+inline f32
+norm_t(Game_State* game, f32 start_t, f32 end_t) {
+    return (game->mode_timer - start_t)/(end_t - start_t);
+}
+
+inline void
+center_camera_zoom(Game_State* game, f32 start_zoom, f32 end_zoom, f32 start_t, f32 end_t, f32 (*easing_func)(f32)) {
+    f32 t = norm_t(game, start_t, end_t);
+    f32 zoom = start_zoom + (end_zoom - start_zoom)*easing_func(t);
+    f32 offset = (zoom - 1.0f)/2.0f;
+    game->final_render_offset = vec2(offset, offset);
+    game->final_render_zoom = zoom;
+    
+}
+
+inline v2
+get_camera_to_target_p(Game_State* game) {
+    v2 result = {};
+    result.x = game->camera_p.x + game->game_width/2.0f;
+    result.y = game->camera_p.x + game->game_height/2.0f;
+    return result;
+}
+
+inline void
+center_camera_on_v2(Game_State* game, v2 start_p, v2 end_p, f32 start_t, f32 end_t, f32 (*easing_func)(f32)) {
+    f32 t = (game->mode_timer - start_t)/(end_t - start_t);
+    v2 diff_p = end_p - start_p;
+    
+    game->camera_p.x = start_p.x + diff_p.x*easing_func(t) - game->game_width/2.0f;
+    //game->camera_p.y = start_p.y + diff_p.y*easing_func(t) - game->game_height/2.0f;
 }
 
 void
@@ -585,36 +631,119 @@ update_and_render_death_screen(Game_State* game) {
     set_game_mode(game, GameMode_Level);
 }
 
+Color colors[] = { WHITE, PINK, ORANGE, GREEN, YELLOW };
 
 void
 update_and_render_cutscene_ability(Game_State* game) {
+    Entity* player = game->player;
+    const v2 target = vec2(68, 13);
+    game->ps_gravity->start_min_p = target;
+    game->ps_gravity->start_max_p = target + vec2(1, 1);
+    game->ps_gravity->min_angle = -PI_F32;
+    game->ps_gravity->max_angle = 0;
+    game->ps_gravity->min_speed = 0.05f; game->ps_gravity->max_speed = 0.6f;
+    game->ps_gravity->spawn_rate = 0.05f;
+    game->ps_gravity->delta_t = 0.005f;
     
-    game->final_render_offset = vec2(0.5f, 0.5f);
-    game->final_render_zoom = 2.0f;
-    
-    if (game->mode_timer > 1.5f) {
-        camera_follow_entity_x(game, game->player, 10);
-        f32 target = 65.0f;
+    if (game->mode_timer < 1.5f) {
+        game->ability_block = 0;
         
-        Entity* player = game->player;
-        if (player->p.x < target) {
+        // Setup
+        player->acceleration.x = 0.0f;
+        player->acceleration.y = 0.0f;
+        game->start_p = get_camera_to_target_p(game);
+        
+    } else if (game->mode_timer < 3.0f) {
+        // Walk to the target
+        center_camera_on_v2(game, game->start_p, target + vec2(0.5f, 0.5f), 1.5f, 3.0f, cubic_ease_in_out);
+        
+        f32 player_target = target.x - 3.0f;
+        if (player->p.x < player_target) {
             player->acceleration.x = 10.0f;
         } else {
             player->acceleration.x = 0.0f;
         }
         
-        update_rigidbody(game, player);
+    } else if (game->mode_timer < 4.5f) {
+        // Zoom in
+        center_camera_zoom(game, 1.0f, 2.0f, 3.0f, 4.5f, cubic_ease_in_out);
+        
+    } else if (game->mode_timer < 6.0f) {
+        v2s bottom = to_pixel(game, target);
+        
+        int height = (int) ((game->mode_timer - 5.5f)*6.0f*bottom.y);
+        height = clamp(height, 0, bottom.y);
+        int expand = (int) ((game->mode_timer - 5.7f)*64.0f);
+        expand = clamp(expand, 1, 8);
+        DrawRectangle(bottom.x + 8 - expand, 0, expand*2, height, WHITE);
+    } else if (game->mode_timer < 8.0f) {
+        if (!game->ability_block) {
+            // TODO(Alexander): this is really ugly hack to find the target entity, tagging didn't work
+            for_array(game->entities, it, _) {
+                if (it->p.x == target.x && it->p.y == target.y) {
+                    if (it->type == Gravity_Inverted) {
+                        *it = {};
+                        game->tile_map[(int) target.y*game->tile_map_width + (int) target.x] = 0;
+                        game->ability_block = it;
+                        particle_burst(game->ps_gravity, 200, 1.0f);
+                    }
+                }
+            }
+        }
+        update_particle_system(game->ps_gravity, false);
     } else {
-        center_camera_on_entity(game, game->player);
+        v2 game_box = vec2(game->game_width/2.0f, game->game_height/2.0f); 
+        game->ps_gravity->min_angle = -PI_F32/2.0f;
+        game->ps_gravity->max_angle = -PI_F32/2.0f;
+        game->ps_gravity->start_min_p = target - game_box;
+        game->ps_gravity->start_max_p = target + game_box;
+        game->ps_gravity->max_speed = 0.02f;
+        game->ps_gravity->delta_t = 0.01f;
+        update_particle_system(game->ps_gravity, true);
+        
+        if (game->mode_timer < 11.0f) {
+            center_camera_zoom(game, 2.0f, 1.0f, 8.0f, 11.0f, cubic_ease_in_out);
+            
+            //} else if (game->mode_timer < 11.0f) {
+            center_camera_on_v2(game, target + vec2(0.5f, 0.5f), player->p, 8.0f, 11.0f, cubic_ease_in_out);
+        }
+        
+        if (game->mode_timer > 11.0f) {
+            Game_Controller controller = get_controller(game);
+            game->ability_unlock_gravity = true;
+            
+            if (controller.action_pressed) {
+                set_game_mode(game, GameMode_Level);
+                player->invert_gravity = false;
+                player->velocity.y = 6.0f;
+                return;
+            }
+        }
+        
+        player->invert_gravity = true;
+        if (player->p.y > 7) {
+            player->acceleration.y = -2;
+        } else {
+            player->acceleration.y = 2;
+        }
+        
+        
+        if (fabsf(player->velocity.y) > 4.0f) {
+            player->velocity.y = sign(player->velocity.y)*4.0f;
+        }
     }
     
-    if (game->mode_timer > 3.0f) {
-        unimplemented;
-        //v2 top = to_pixel_v2(game, );
-        //DrawRectangle();
-    }
+    update_rigidbody(game, player);
     
-    render_level(game, true);
+    render_level(game, true, game->mode_timer >= 8.0f);
+    
+    for_particle(game->ps_gravity, pa, ci) {
+        Color c = colors[ci % fixed_array_count(colors)];
+        c.a = (u8) (pa->t * 255);
+        v2s p = to_pixel(game, pa->p);
+        pa->v *= 0.96f;
+        DrawPixel(p.x, p.y, c);
+    }
 }
 
 
@@ -677,6 +806,7 @@ main() {
     game.render_height = game.game_height * TILE_SIZE;
     game.screen_width = game.render_width * game.game_scale;
     game.screen_height = game.render_height * game.game_scale;
+    game.ps_gravity = init_particle_system(200);
     
     game.normal_gravity = 20;
     game.fall_gravity = 50;

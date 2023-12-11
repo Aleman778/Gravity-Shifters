@@ -36,6 +36,26 @@ eat_until(u8** scanner, u8 end) {
     return result;
 }
 
+string
+eat_until_excluding_end(u8** scanner, u8 end) {
+    string result;
+    result.data = (u8*) *scanner;
+    
+    u32 count = 0;
+    u8* scan = *scanner;
+    while (*scan) {
+        if (*scan == end) {
+            *scanner = scan;
+            result.count = count;
+            break;
+        }
+        *scan++;
+        count++;
+    }
+    
+    return result;
+}
+
 inline string
 eat_line(u8** scanner) {
     return eat_until(scanner, '\n');

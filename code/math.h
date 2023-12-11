@@ -5,6 +5,11 @@ random_f32() {
     return (f32) rand() / (RAND_MAX + 1.0f);
 }
 
+f32
+cubic_ease_in_out(f32 x) {
+    return x < 0.5 ? 4 * x * x * x : 1 - powf(-2 * x + 2, 3) / 2;
+}
+
 union v2 {
     struct {
         f32 x, y;

@@ -1,6 +1,7 @@
 #include "raylib.h"
 #include "types.h"
 #include "math.h"
+#include "particles.h"
 #include "tokenizer.h"
 #include "memory.h"
 
@@ -51,6 +52,8 @@ struct Trigger {
 };
 
 struct Entity {
+    string* tag;
+    
     // Physics/ collider (and render shape)
     Entity* collided_with;
     Collision collision;
@@ -145,6 +148,9 @@ struct Game_State {
     
     v2 camera_p;
     
+    v2 start_p; // start position of the current mode
+    Entity* ability_block; // for cutsceen when you get the ability
+    
     v2 final_render_offset;
     f32 final_render_zoom;
     f32 final_render_rot;
@@ -158,6 +164,8 @@ struct Game_State {
     DEF_TEXUTRE2D
 #undef TEX2D
     Font font_default;
+    
+    Particle_System* ps_gravity;
     
     u8* tile_map;
     int tile_map_width;
@@ -182,6 +190,12 @@ set_game_mode(Game_State* game, Game_Mode mode) {
     game->final_render_offset = {};
     game->final_render_zoom = 1.0f;
     game->final_render_rot = 0.0f;
+    
+    if (game->player) {
+        game->start_p = game->player->p;
+    }
+    
+    reset_particle_system(game->ps_gravity);
 }
 
 #define for_array(arr, it, it_index) \
