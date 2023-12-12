@@ -27,6 +27,8 @@ configure_entity(Game_State* game, Entity* entity) {
             entity->is_rigidbody = true;
             entity->max_speed.x = 5.0f;
             entity->max_speed.y = 20.0f;
+            entity->frame_duration = 2.0f;
+            entity->frames = 6;
             if (!entity->invert_gravity) {
                 entity->p.y -= entity->size.y - 1.0f;
             }

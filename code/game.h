@@ -110,8 +110,8 @@ struct Saved_Entity {
 
 #define DEF_TEXUTRE2D \
 TEX2D(tiles, "tileset_rock.png") \
-TEX2D(character, "character1.png") \
-TEX2D(character_inv, "character2.png") \
+TEX2D(character, "character.png") \
+TEX2D(character_inv, "character_inv.png") \
 TEX2D(coin, "moon_coin.png") \
 TEX2D(ui_coin, "ui_coin.png") \
 TEX2D(spikes, "spikes.png") \

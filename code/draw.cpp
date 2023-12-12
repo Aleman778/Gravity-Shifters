@@ -100,12 +100,13 @@ draw_entity(Game_State* game, Entity* entity, Entity_Layer layer) {
         
         case Player: {
             v2 sprite_offset = {};
-            sprite_offset.x = 0.2f;
+            sprite_offset.x = 0.0f;
             if (dir.y > 0) {
-                sprite_offset.y = 0.75f;
+                sprite_offset.y = 0.6f;//25f;
                 draw_sprite(game, &game->texture_character, entity->p - sprite_offset, {}, vec2(1.0f, 2.0f), dir, frame);
             } else {
-                draw_sprite(game, &game->texture_character_inv, entity->p - sprite_offset, {}, vec2(1.0f, 2.0f), dir, frame);
+                sprite_offset.y = 0.15f;//25f;
+                draw_sprite(game, &game->texture_character_inv, entity->p - sprite_offset, {}, vec2(1.0f, 2.7f), dir, frame);
             }
         } break;
         
