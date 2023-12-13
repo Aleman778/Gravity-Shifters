@@ -12,7 +12,6 @@
 #include "draw.cpp"
 
 const s32 first_gid = 41;
-const s32 player_gid = 41;
 const s32 player_inverted_gid = 42;
 const Entity_Type gid_to_entity_type[] = {
     Player, Player, Spikes, Spikes_Top, Coin, Enemy_Plum, None, Vine, Gravity_Inverted, Gravity_Normal
@@ -379,12 +378,23 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
     if (player->is_grounded && player->health > 0) {
         for_array(game->triggers, trigger, trigger_index) {
             if (trigger_index >= game->trigger_count) break;
-            if (box_check(player->collider, trigger->collider)) {
-                
-                if (string_equals(trigger->tag, string_lit("ability"))) {
-                    if (!game->ability_unlock_gravity) {
-                        set_game_mode(game, GameMode_Cutscene_Ability);
-                    }
+            bool overlap = box_check(player->collider, trigger->collider);
+            if (string_equals(trigger->tag, string_lit("tutorial_walk"))) {
+                update_tutorial(game, overlap, Tutorial_Walk);
+            }
+            
+            if (string_equals(trigger->tag, string_lit("tutorial_jump"))) {
+                update_tutorial(game, overlap, Tutorial_Jump);
+            }
+            
+            if (string_equals(trigger->tag, string_lit("tutorial_longjump"))) {
+                update_tutorial(game, overlap, Tutorial_Long_Jump);
+            }
+            
+            
+            if (overlap && string_equals(trigger->tag, string_lit("ability"))) {
+                if (!game->ability_unlock_gravity) {
+                    set_game_mode(game, GameMode_Cutscene_Ability);
                 }
             }
         }
@@ -554,6 +564,11 @@ void
 update_and_render_level(Game_State* game) {
     Game_Controller controller = get_controller(game);
     
+    Box sim_window;
+    sim_window.p = game->camera_p - vec2(2.0f, 2.0f);
+    sim_window.size = vec2(game->game_width + 4.0f, game->game_height + 4.0f);
+    pln("%f, %f", sim_window.p.x, sim_window.p.y);
+    
     // Update game
     for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
         Entity* entity = &game->entities[entity_index];
@@ -564,7 +579,9 @@ update_and_render_level(Game_State* game) {
             } break;
             
             case Enemy_Plum: {
-                update_enemy_plum(game, entity);
+                if (box_check(sim_window, entity->collider)) {
+                    update_enemy_plum(game, entity);
+                }
             } break;
             
             case Vine: {
@@ -775,16 +792,6 @@ game_update_and_render(Game_State* game, RenderTexture2D render_target) {
     EndTextureMode();
 }
 
-void
-game_draw_ui(Game_State* game, f32 scale) {
-    cstring coins = TextFormat("%d", game->coins);
-    Vector2 p = { 8*scale, 8*scale };
-    DrawTextureEx(game->texture_ui_coin, p, 0, scale, WHITE);
-    p.x += (game->texture_ui_coin.width + 1.0f) * scale;
-    p.y += scale;
-    DrawTextEx(game->font_default, coins, p, 14*scale, 0, WHITE);
-}
-
 #define DEF_LEVEL1 \
 LVL("level1") \
 LVL("level1_2") \
@@ -793,7 +800,7 @@ LVL("level1_4") \
 LVL("level1_5")
 
 cstring level_assets[] = {
-#define LVL(filename) "assets/"##filename##".tmx", 
+#define LVL(filename) "assets/" filename ".tmx", 
     DEF_LEVEL1
 #undef LVL
 };
@@ -828,7 +835,7 @@ main() {
     Memory_Arena level_arena = {};
     game.meters_to_pixels = TILE_SIZE;
     game.pixels_to_meters = 1.0f/game.meters_to_pixels;
-#define TEX2D(name, filename) game.texture_##name = LoadTexture("assets/"##filename);
+#define TEX2D(name, filename) game.texture_##name = LoadTexture("assets/" filename);
     DEF_TEXUTRE2D
 #undef TEX2D
     

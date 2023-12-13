@@ -49,7 +49,7 @@ eat_until_excluding_end(u8** scanner, u8 end) {
             result.count = count;
             break;
         }
-        *scan++;
+        scan++;
         count++;
     }
     

@@ -35,6 +35,15 @@ enum Collision {
     Col_All = Col_Left | Col_Right | Col_Top | Col_Bottom
 };
 
+enum {
+    Tutorial_None = 0,
+    Tutorial_Walk = bit(1),
+    Tutorial_Jump = bit(2),
+    Tutorial_Long_Jump = bit(3),
+    Tutorial_Switch_Gravity = bit(4),
+};
+typedef u8 Tutorial;
+
 struct Box {
     v2 p;
     v2 size;
@@ -119,6 +128,12 @@ TEX2D(plum, "plum.png") \
 TEX2D(plum_dead, "plum_dead.png") \
 TEX2D(vine, "vine.png") \
 TEX2D(space, "space.png") \
+TEX2D(ui_walk_keyboard, "ui_walk_keyboard.png") \
+TEX2D(ui_jump_keyboard, "ui_jump_keyboard.png") \
+TEX2D(ui_long_jump_keyboard, "ui_jump_keyboard.png") \
+TEX2D(ui_walk_gamepad, "ui_walk_gamepad.png") \
+TEX2D(ui_jump_gamepad, "ui_jump_gamepad.png") \
+TEX2D(ui_long_jump_gamepad, "ui_long_jump_gamepad.png") \
 
 struct Game_State {
     Entity* player;
@@ -143,6 +158,9 @@ struct Game_State {
     Game_Mode mode;
     f32 mode_timer;
     
+    Tutorial curr_tutorials;
+    Tutorial finished_tutorials;
+    
     s32 coins;
     s32 saved_coins;
     
@@ -158,6 +176,8 @@ struct Game_State {
     f32 normal_gravity;
     f32 fall_gravity;
     bool is_moon_gravity;
+    
+    bool use_gamepad;
     
     // Resource
 #define TEX2D(name, ...) Texture2D texture_##name;
@@ -183,6 +203,26 @@ struct Game_State {
     f32 pixels_to_meters;
 };
 
+void
+update_tutorial(Game_State* game, bool begin, Tutorial tutorial) {
+    if (begin) {
+        if (!(game->finished_tutorials & tutorial) && 
+            !(game->curr_tutorials & tutorial)) {
+            game->curr_tutorials |= tutorial;
+        }
+    } else {
+        if (game->curr_tutorials & tutorial) {
+            game->curr_tutorials &= (~tutorial);
+            game->finished_tutorials |= tutorial;
+        }
+    }
+}
+
+bool
+is_tutorial_active(Game_State* game, Tutorial tutorial) {
+    return game->curr_tutorials & tutorial;
+}
+
 inline void
 set_game_mode(Game_State* game, Game_Mode mode) {
     game->mode = mode;
@@ -203,8 +243,6 @@ int it_index = 0; \
 for (auto it = arr; \
 it_index < fixed_array_count(arr); \
 it_index++, it++)
-
-void game_draw_ui(Game_State* game, f32 scale);
 
 struct Game_Controller {
     v2 dir;
@@ -232,6 +270,8 @@ get_controller(Game_State* game, int gamepad_index=0) {
         result.jump_down = IsGamepadButtonDown(gamepad_index, jump_button);
         result.action_pressed = IsGamepadButtonPressed(gamepad_index, action_button);
         
+        game->use_gamepad = true;
+        
     } else {
         //int left = KEY_LEFT;
         //int right = KEY_RIGHT;
@@ -250,6 +290,8 @@ get_controller(Game_State* game, int gamepad_index=0) {
         result.jump_down = IsKeyDown(key_jump);
         
         result.action_pressed = IsKeyPressed(key_action);
+        
+        game->use_gamepad = false;
     }
     return result;
 }

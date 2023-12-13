@@ -93,7 +93,7 @@ draw_entity(Game_State* game, Entity* entity, Entity_Layer layer) {
         case Gravity_Inverted:
         case Gravity_Normal: {
             static v2 scroll_space = {};
-            scroll_space += 0.001f;
+            scroll_space += 0.002f;
             v2 sprite_offset = scroll_space + game->camera_p.x*0.2f;
             draw_sprite(game, entity->sprite, entity->p, sprite_offset, entity->size, {}, 0);
         } break;
@@ -124,14 +124,48 @@ draw_entity(Game_State* game, Entity* entity, Entity_Layer layer) {
 }
 
 void
+game_draw_ui(Game_State* game, f32 width, f32 height, f32 scale) {
+    
+    if (game->mode == GameMode_Level) {
+        cstring coins = TextFormat("%d", game->coins);
+        Vector2 p = { 8*scale, 8*scale };
+        DrawTextureEx(game->texture_ui_coin, p, 0, scale, WHITE);
+        p.x += (game->texture_ui_coin.width + 1.0f) * scale;
+        p.y += scale;
+        DrawTextEx(game->font_default, coins, p, 14*scale, 0, WHITE);
+    }
+    
+    if (game->curr_tutorials) {
+        cstring tutorial = "";
+        Texture2D tex = {};
+        if (is_tutorial_active(game, Tutorial_Walk)) {
+            tutorial = "Walk";
+            tex = game->use_gamepad ? game->texture_ui_walk_gamepad : game->texture_ui_walk_keyboard;
+        } else if (is_tutorial_active(game, Tutorial_Jump)) {
+            tutorial = "Jump";
+            tex = game->use_gamepad ? game->texture_ui_jump_gamepad : game->texture_ui_jump_keyboard;
+        } else if (is_tutorial_active(game, Tutorial_Long_Jump)) {
+            tutorial = "Jump (hold for longer jump)";
+            tex = game->use_gamepad ? game->texture_ui_long_jump_gamepad : game->texture_ui_long_jump_keyboard;
+        }
+        
+        Vector2 p = { width/2.0f - 64.0f, height - 80.0f };
+        DrawTextureEx(tex, p, 0, scale, WHITE);
+        p.x += 34.0f*scale;
+        if (game->use_gamepad) {
+            p.y += 2.0f*scale;
+        }
+        DrawTextEx(game->font_default, tutorial, p, 14*scale, 0, WHITE);
+    }
+}
+
+void
 draw_texture_to_screen(Game_State* game, RenderTexture2D render_target) {
     Vector2 origin =  {};
     
-    int width = GetScreenWidth();
     int height = GetScreenHeight();
     if (IsWindowFullscreen()) {
         int monitor = GetCurrentMonitor();
-        width = GetMonitorWidth(monitor);
         height = GetMonitorHeight(monitor);
         
     }
@@ -161,7 +195,7 @@ draw_texture_to_screen(Game_State* game, RenderTexture2D render_target) {
     
     DrawTexturePro(render_texture, src, dest, origin, game->final_render_rot, WHITE);
     
-    game_draw_ui(game, (f32) scale);
+    game_draw_ui(game, dest.width, dest.height, (f32) scale);
     
 #if BUILD_DEBUG
     DrawFPS(8, game->screen_height - 24);

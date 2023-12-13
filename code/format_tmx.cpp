@@ -124,12 +124,20 @@ read_tmx_map_data(u8* scan, Memory_Arena* arena) {
                     } else if (string_equals(name, string_lit("Checkpoints"))) {
                         read_tmx_objects(&scan, arena, &result, TmxObjectGroup_Checkpoints);
                     } else {
-                        //pln("Invalid object group: %", name);
+                        pln("Invalid object group: %.*s", (int) name.count, name.data);
                         assert(0 && "invalid objectgroup found");
                     }
                     break;
                 }
             }
+        }
+    }
+    
+    // Copy strings for object names
+    for (int object_index = 0; object_index < result.object_count; object_index++) {
+        Tmx_Object* object = &result.objects[object_index];
+        if (object->name.data) {
+            object->name = push_string(arena, object->name);
         }
     }
     
@@ -220,7 +228,7 @@ read_tmx_tile_map(u8** scanner, Loaded_Tmx* result) {
 void
 read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result, Tmx_Object_Group group) {
     for (u8* scan = *scanner; *scan; scan++) {
-        if (eat_string(&scan, "</objectgroup>")) {
+        if (eat_string(&scan, "/>") || eat_string(&scan, "</objectgroup>")) {
             break;
         }
         
@@ -239,10 +247,11 @@ read_tmx_objects(u8** scanner, Memory_Arena* arena, Loaded_Tmx* result, Tmx_Obje
                 }
                 
                 if (eat_string(&scan, "name=\"")) {
-                    object->name = push_string(arena, eat_until_excluding_end(&scan,'"'));
+                    object->name = eat_until_excluding_end(&scan,'"');
+                    //pln("%d: name = %.*s", group, (int) object->name.count, object->name.data);
                 } else if (eat_string(&scan, "gid=\"")) {
                     object->gid = eat_integer(&scan);
-                    pln("gid=%d", object->gid);
+                    //pln("gid=%d", object->gid);
                 } else if (eat_string(&scan, "x=\"")) {
                     f32 x = (f32) eat_integer(&scan);
                     object->p.x = x/(f32) result->tile_width;
