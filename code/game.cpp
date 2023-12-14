@@ -14,7 +14,7 @@
 const s32 first_gid = 41;
 const s32 player_inverted_gid = 42;
 const Entity_Type gid_to_entity_type[] = {
-    Player, Player, Spikes, Spikes_Top, Coin, Enemy_Plum, None, Vine, Gravity_Inverted, Gravity_Normal
+    Player, Player, Spikes, Spikes, Coin, Enemy_Plum, None, Vine, Gravity_Inverted, Gravity_Normal
 };
 
 void
@@ -23,6 +23,7 @@ configure_entity(Game_State* game, Entity* entity) {
         case Player: {
             entity->size = vec2(0.6f, 1.25f);
             entity->health = 1;
+            entity->offset.x = -0.1f;
             entity->is_rigidbody = true;
             entity->max_speed.x = 5.0f;
             entity->max_speed.y = 20.0f;
@@ -32,6 +33,7 @@ configure_entity(Game_State* game, Entity* entity) {
                 entity->p.y -= entity->size.y - 1.0f;
             }
             entity->sprite = &game->texture_character;
+            entity->prev_invert_gravity = entity->invert_gravity;
             game->player = entity;
         } break;
         
@@ -48,6 +50,7 @@ configure_entity(Game_State* game, Entity* entity) {
             entity->sprite = &game->texture_spikes;
             entity->size = vec2(1.0f, 1.0f);
             entity->is_solid = true;
+            entity->invert_gravity = entity->direction.y < 0.0f;
         } break;
         
         case Spikes_Top: {
@@ -265,7 +268,6 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
         player->is_grounded = false;
     }
     
-    
     // TODO(Alexander): must have!
     // Add cayote timer
     // Add jump buffering
@@ -294,12 +296,7 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
     if (player->collided_with) {
         Entity* other = player->collided_with;
         switch (other->type) {
-            case Spikes: {
-                if (player->collision == (Col_Top | Col_Bottom)) {
-                    kill_entity(player);
-                }
-            } break;
-            
+            case Spikes:
             case Spikes_Top: {
                 if (player->collision & (Col_Top | Col_Bottom)) {
                     kill_entity(player);
@@ -326,6 +323,7 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
             case Coin: {
                 other->type = None;
                 game->coins++;
+                PlaySound(game->snd_pickup_moon);
             } break;
             
             case Gravity_Normal: {
@@ -389,6 +387,10 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
             
             if (string_equals(trigger->tag, string_lit("tutorial_longjump"))) {
                 update_tutorial(game, overlap, Tutorial_Long_Jump);
+            }
+            
+            if (string_equals(trigger->tag, string_lit("tutorial_gravity"))) {
+                update_tutorial(game, game->ability_unlock_gravity && overlap, Tutorial_Switch_Gravity);
             }
             
             
@@ -479,7 +481,9 @@ render_level(Game_State* game, bool skip_enemies=false, bool skip_tilemap=false)
         Entity* entity = &game->entities[entity_index];
         
         if (skip_enemies && (entity->type == Enemy_Plum ||
-                             entity->type == Enemy_Plum_Dead)) {
+                             entity->type == Enemy_Plum_Dead ||
+                             entity->type == Spikes ||
+                             entity->type == Coin)) {
             continue;
         }
         
@@ -567,7 +571,6 @@ update_and_render_level(Game_State* game) {
     Box sim_window;
     sim_window.p = game->camera_p - vec2(2.0f, 2.0f);
     sim_window.size = vec2(game->game_width + 4.0f, game->game_height + 4.0f);
-    pln("%f, %f", sim_window.p.x, sim_window.p.y);
     
     // Update game
     for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
@@ -633,6 +636,7 @@ update_and_render_level(Game_State* game) {
     
     if (game->player->health <= 0) {
         set_game_mode(game, GameMode_Death_Screen);
+        PlaySound(game->snd_death);
     }
     
     camera_follow_entity_x(game, game->player);
@@ -650,16 +654,22 @@ update_and_render_death_screen(Game_State* game) {
     set_game_mode(game, GameMode_Level);
 }
 
-Color colors[] = { WHITE, PINK, ORANGE, GREEN, YELLOW };
+Color colors[] = {
+    WHITE, 
+    { 255, 82,  119, 255 },
+    { 255, 174, 112, 255 }, 
+    { 146, 232, 192, 255 },
+    { 255, 238, 131, 255 }
+};
 
 void
 update_and_render_cutscene_ability(Game_State* game) {
     Entity* player = game->player;
-    const v2 target = vec2(68, 13);
+    const v2 target = vec2(176, 14);
     game->ps_gravity->start_min_p = target;
     game->ps_gravity->start_max_p = target + vec2(1, 1);
-    game->ps_gravity->min_angle = -PI_F32;
-    game->ps_gravity->max_angle = 0;
+    game->ps_gravity->min_angle = -PI_F32 + 0.05f;
+    game->ps_gravity->max_angle = 0.05f;
     game->ps_gravity->min_speed = 0.05f; game->ps_gravity->max_speed = 0.6f;
     game->ps_gravity->spawn_rate = 0.05f;
     game->ps_gravity->delta_t = 0.005f;
@@ -673,10 +683,12 @@ update_and_render_cutscene_ability(Game_State* game) {
         game->start_p = get_camera_to_target_p(game);
         
     } else if (game->mode_timer < 3.0f) {
+        start_music_crossfade(game, {}, 2.0f);
         // Walk to the target
         center_camera_on_v2(game, game->start_p, target + vec2(0.5f, 0.5f), 1.5f, 3.0f, cubic_ease_in_out);
         
         f32 player_target = target.x - 3.0f;
+        player->acceleration.y = 9.0f;
         if (player->p.x < player_target) {
             player->acceleration.x = 10.0f;
         } else {
@@ -690,12 +702,21 @@ update_and_render_cutscene_ability(Game_State* game) {
     } else if (game->mode_timer < 6.0f) {
         v2s bottom = to_pixel(game, target);
         
+        static bool played_explosion = false;
+        if (!played_explosion && game->mode_timer >= 5.4f) {
+            PlaySound(game->snd_explosion);
+            played_explosion = true;
+        }
+        
         int height = (int) ((game->mode_timer - 5.5f)*6.0f*bottom.y);
         height = clamp(height, 0, bottom.y);
         int expand = (int) ((game->mode_timer - 5.7f)*64.0f);
         expand = clamp(expand, 1, 8);
         DrawRectangle(bottom.x + 8 - expand, 0, expand*2, height, WHITE);
     } else if (game->mode_timer < 8.0f) {
+        if (game->mode_timer > 7.0f) {
+            start_music_crossfade(game, game->music_gravity_unlock, 3.0f);
+        }
         if (!game->ability_block) {
             // TODO(Alexander): this is really ugly hack to find the target entity, tagging didn't work
             for_array(game->entities, it, _) {
@@ -705,18 +726,24 @@ update_and_render_cutscene_ability(Game_State* game) {
                         game->tile_map[(int) target.y*game->tile_map_width + (int) target.x] = 0;
                         game->ability_block = it;
                         particle_burst(game->ps_gravity, 200, 1.0f);
+                        
+                        for_particle(game->ps_gravity, pa, ci) {
+                            pa->v.y += -0.05f;
+                        }
                     }
                 }
             }
         }
+        
         update_particle_system(game->ps_gravity, false);
     } else {
+        
         v2 game_box = vec2(game->game_width/2.0f, game->game_height/2.0f); 
         game->ps_gravity->min_angle = -PI_F32/2.0f;
         game->ps_gravity->max_angle = -PI_F32/2.0f;
         game->ps_gravity->start_min_p = target - game_box;
         game->ps_gravity->start_max_p = target + game_box;
-        game->ps_gravity->max_speed = 0.02f;
+        game->ps_gravity->max_speed = 0.05f;
         game->ps_gravity->delta_t = 0.01f;
         update_particle_system(game->ps_gravity, true);
         
@@ -730,8 +757,10 @@ update_and_render_cutscene_ability(Game_State* game) {
         if (game->mode_timer > 11.0f) {
             Game_Controller controller = get_controller(game);
             game->ability_unlock_gravity = true;
+            update_tutorial(game, true, Tutorial_Switch_Gravity);
             
             if (controller.action_pressed) {
+                start_music_crossfade(game, {}, 1.5f);
                 set_game_mode(game, GameMode_Level);
                 player->invert_gravity = false;
                 player->velocity.y = 6.0f;
@@ -754,13 +783,16 @@ update_and_render_cutscene_ability(Game_State* game) {
     
     update_rigidbody(game, player);
     
-    render_level(game, true, game->mode_timer >= 8.0f);
+    render_level(game, game->mode_timer >= 8.0f, game->mode_timer >= 8.0f);
     
     for_particle(game->ps_gravity, pa, ci) {
         Color c = colors[ci % fixed_array_count(colors)];
         c.a = (u8) (pa->t * 255);
+        
         v2s p = to_pixel(game, pa->p);
+        v2s p0 = to_pixel(game, pa->p - pa->v);
         pa->v *= 0.96f;
+        DrawLine(p0.x, p0.y, p.x, p.y, c);
         DrawPixel(p.x, p.y, c);
     }
 }
@@ -822,10 +854,14 @@ main() {
     
     set_game_mode(&game, GameMode_Level);
     
-    
     SetConfigFlags(FLAG_VSYNC_HINT);
     InitWindow(game.screen_width, game.screen_height, "Bigmode Game Jam 2023");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
+    
+    MaximizeWindow();
+    ToggleFullscreen();
+    
+    InitAudioDevice();
     
     //int monitor = GetCurrentMonitor();
     //int target_fps = GetMonitorRefreshRate(monitor);
@@ -839,6 +875,14 @@ main() {
     DEF_TEXUTRE2D
 #undef TEX2D
     
+#define SND(name, filename) game.snd_##name = LoadSound("assets/" filename);
+    DEF_SOUND
+#undef SND
+    
+#define MUSIC(name, filename) game.music_##name = LoadMusicStream("assets/" filename);
+    DEF_MUSIC
+#undef MUSIC
+    
     game.font_default = LoadFontEx("assets/Retro Gaming.ttf", 14*4, 0, 0);
     SetTextureFilter(game.font_default.texture, TEXTURE_FILTER_POINT);
     
@@ -848,7 +892,27 @@ main() {
     cstring filename = level_assets[0];
     game_setup_level(&game, &level_arena, string_lit(filename));
     
+    start_music(&game, game.music_level1_intro);
+    
     while (!WindowShouldClose()) {
+        game.global_timer += GetFrameTime();
+        
+        // Update music
+        if (game.cross_fade_duration > 0.0f) {
+            f32 fade_t = game.global_timer - game.cross_fade_timer;
+            f32 fade_volume = clamp(fade_t * (1.0f/game.cross_fade_duration), 0.0f, 1.0f);
+            SetMusicVolume(game.music_playing, fade_volume);
+            SetMusicVolume(game.music_fade_out, 1.0f - fade_volume);
+            
+            if (fade_volume < 1.0f) {
+                UpdateMusicStream(game.music_fade_out);
+            } else {
+                StopMusicStream(game.music_fade_out);
+            }
+        }
+        UpdateMusicStream(game.music_playing);
+        
+        // Fullscreen
         if (IsKeyPressed(KEY_F)) {
             MaximizeWindow();
             ToggleFullscreen();
@@ -867,7 +931,6 @@ main() {
         //render_target = LoadRenderTexture(game.render_width, game.render_height);
         //SetTextureFilter(render_target.texture, TEXTURE_FILTER_POINT);
         //}
-        
         
         game_update_and_render(&game, render_target);
         draw_texture_to_screen(&game, render_target);

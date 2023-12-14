@@ -100,7 +100,12 @@ draw_entity(Game_State* game, Entity* entity, Entity_Layer layer) {
         
         case Player: {
             v2 sprite_offset = {};
-            sprite_offset.x = 0.0f;
+            sprite_offset.x = 0.2f;
+            
+            if (!entity->is_grounded) {
+                frame = 2;
+            }
+            
             if (dir.y > 0) {
                 sprite_offset.y = 0.6f;//25f;
                 draw_sprite(game, &game->texture_character, entity->p - sprite_offset, {}, vec2(1.0f, 2.0f), dir, frame);
@@ -147,6 +152,9 @@ game_draw_ui(Game_State* game, f32 width, f32 height, f32 scale) {
         } else if (is_tutorial_active(game, Tutorial_Long_Jump)) {
             tutorial = "Jump (hold for longer jump)";
             tex = game->use_gamepad ? game->texture_ui_long_jump_gamepad : game->texture_ui_long_jump_keyboard;
+        } else if (is_tutorial_active(game, Tutorial_Switch_Gravity)) {
+            tutorial = "Change gravity";
+            tex = game->use_gamepad ? game->texture_ui_gravity_gamepad : game->texture_ui_gravity_keyboard;
         }
         
         Vector2 p = { width/2.0f - 64.0f, height - 80.0f };

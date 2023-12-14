@@ -82,6 +82,7 @@ struct Entity {
     v2 direction;
     
     bool invert_gravity;
+    bool prev_invert_gravity;
     f32 gravity;
     f32 fall_gravity;
     
@@ -131,9 +132,21 @@ TEX2D(space, "space.png") \
 TEX2D(ui_walk_keyboard, "ui_walk_keyboard.png") \
 TEX2D(ui_jump_keyboard, "ui_jump_keyboard.png") \
 TEX2D(ui_long_jump_keyboard, "ui_jump_keyboard.png") \
+TEX2D(ui_gravity_keyboard, "ui_gravity_keyboard.png") \
 TEX2D(ui_walk_gamepad, "ui_walk_gamepad.png") \
 TEX2D(ui_jump_gamepad, "ui_jump_gamepad.png") \
-TEX2D(ui_long_jump_gamepad, "ui_long_jump_gamepad.png") \
+TEX2D(ui_long_jump_gamepad, "ui_jump_gamepad.png") \
+TEX2D(ui_gravity_gamepad, "ui_gravity_gamepad.png") \
+
+#define DEF_SOUND \
+SND(pickup_moon, "pickup_moon.wav") \
+SND(death, "death.wav") \
+SND(explosion, "explosion.wav") \
+SND(gravity_landing, "gravity_landing.wav") \
+
+#define DEF_MUSIC \
+MUSIC(level1_intro, "level1_intro.wav") \
+MUSIC(gravity_unlock, "gravity_unlock.wav") \
 
 struct Game_State {
     Entity* player;
@@ -157,6 +170,7 @@ struct Game_State {
     
     Game_Mode mode;
     f32 mode_timer;
+    f32 global_timer;
     
     Tutorial curr_tutorials;
     Tutorial finished_tutorials;
@@ -179,10 +193,21 @@ struct Game_State {
     
     bool use_gamepad;
     
+    Music music_playing;
+    Music music_fade_out;
+    f32 cross_fade_timer;
+    f32 cross_fade_duration;
+    
     // Resource
 #define TEX2D(name, ...) Texture2D texture_##name;
     DEF_TEXUTRE2D
 #undef TEX2D
+#define SND(name, ...) Sound snd_##name;
+    DEF_SOUND
+#undef SND
+#define MUSIC(name, ...) Music music_##name;
+    DEF_MUSIC
+#undef MUSIC
     Font font_default;
     
     Particle_System* ps_gravity;
@@ -202,6 +227,28 @@ struct Game_State {
     f32 meters_to_pixels;
     f32 pixels_to_meters;
 };
+
+void
+start_music(Game_State* game, Music music) {
+    if (game->music_playing.stream.buffer != music.stream.buffer) {
+        StopMusicStream(game->music_playing);
+        SetMusicVolume(music, 1.0f);
+        PlayMusicStream(music);
+        game->music_playing = music;
+        game->cross_fade_duration = 0.0f;
+    }
+}
+
+void
+start_music_crossfade(Game_State* game, Music music, f32 duration) {
+    if (game->music_playing.stream.buffer != music.stream.buffer) {
+        PlayMusicStream(music);
+        game->music_fade_out = game->music_playing;
+        game->music_playing = music;
+        game->cross_fade_timer = game->global_timer;
+        game->cross_fade_duration = duration;
+    }
+}
 
 void
 update_tutorial(Game_State* game, bool begin, Tutorial tutorial) {
@@ -273,23 +320,30 @@ get_controller(Game_State* game, int gamepad_index=0) {
         game->use_gamepad = true;
         
     } else {
-        //int left = KEY_LEFT;
-        //int right = KEY_RIGHT;
-        //int up = KEY_UP;
-        //int down = KEY_DOWN;
-        int key_left = KEY_A;
-        int key_right = KEY_D;
-        int key_up = KEY_W;
-        int key_down = KEY_S;
+        int key_left = KEY_LEFT;
+        int key_right = KEY_RIGHT;
+        int key_up = KEY_UP;
+        int key_down = KEY_DOWN;
         int key_jump = KEY_SPACE;
-        int key_action = KEY_ENTER;
+        int key_action = KEY_R;
         
-        result.dir.x = IsKeyDown(key_left)*-1.0f + IsKeyDown(key_right)*1.0f;
-        result.dir.y = IsKeyDown(key_up)*-1.0f + IsKeyDown(key_down)*1.0f;
+        // Alternative 
+        int key_left_alt = KEY_A;
+        int key_right_alt = KEY_D;
+        int key_up_alt = KEY_W;
+        int key_down_alt = KEY_S;
+        int key_action_alt = KEY_ENTER;
+        
+        result.dir.x = IsKeyDown(key_left)*-1.0f + IsKeyDown(key_right)*1.0f +
+            IsKeyDown(key_left_alt)*-1.0f + IsKeyDown(key_right_alt)*1.0f;
+        
+        result.dir.y = IsKeyDown(key_up)*-1.0f + IsKeyDown(key_down)*1.0f +
+            IsKeyDown(key_up_alt)*-1.0f + IsKeyDown(key_down_alt)*1.0f;
+        
         result.jump_pressed = IsKeyPressed(key_jump);
         result.jump_down = IsKeyDown(key_jump);
         
-        result.action_pressed = IsKeyPressed(key_action);
+        result.action_pressed = IsKeyPressed(key_action) || IsKeyPressed(key_action_alt);
         
         game->use_gamepad = false;
     }

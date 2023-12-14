@@ -173,10 +173,21 @@ update_rigidbody(Game_State* game, Entity* entity) {
     
     // Rigidbody physics
     v2 step_velocity = entity->velocity * delta_time + entity->acceleration * delta_time * delta_time * 0.5f;
+    
+    v2 velocity_before = entity->velocity;
     check_collisions(game, entity, &step_velocity);
     
     entity->p += step_velocity;
     entity->velocity += entity->acceleration * delta_time;
+    
+    // Play sound effect on player inpact with ground at max speed
+    if (entity->type == Player && entity->prev_invert_gravity != entity->invert_gravity) {
+        if (entity->is_grounded) {
+            entity->prev_invert_gravity = entity->invert_gravity;
+            PlaySound(game->snd_gravity_landing);
+        }
+    }
+    
     
     if (entity->frames > 0) {
         entity->frame_advance += step_velocity.x * entity->frame_duration;
