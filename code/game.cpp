@@ -14,7 +14,7 @@
 const s32 first_gid = 41;
 const s32 player_inverted_gid = 42;
 const Entity_Type gid_to_entity_type[] = {
-    Player, Player, Spikes, Spikes, Coin, Enemy_Plum, None, Vine, Gravity_Inverted, Gravity_Normal
+    Player, Player, Spikes, Enemy_Sharpie, Coin, Enemy_Plum, None, Vine, Gravity_Inverted, Gravity_Normal
 };
 
 void
@@ -64,6 +64,23 @@ configure_entity(Game_State* game, Entity* entity) {
             entity->sprite = &game->texture_plum;
             entity->max_speed.x = 2.0f;
             entity->max_speed.y = 10.0f;
+            entity->frames = 4;
+            entity->frame_duration = 0.12f;
+            if (entity->direction.y < 0) {
+                entity->invert_gravity = true;
+            }
+            entity->size = vec2(1.0f, 1.0f);
+            entity->is_rigidbody = true;
+        } break;
+        
+        
+        case Enemy_Sharpie: {
+            entity->health = 1;
+            entity->sprite = &game->texture_sharpie;
+            entity->max_speed.x = 2.0f;
+            entity->max_speed.y = 20.0f;
+            entity->frames = 4;
+            entity->frame_duration = 0.12f;
             if (entity->direction.y < 0) {
                 entity->invert_gravity = true;
             }
@@ -212,6 +229,8 @@ game_setup_level(Game_State* game, Memory_Arena* level_arena, string filename) {
     game->tile_map_width = tmx.tile_map_width;
     game->tile_map_height = tmx.tile_map_height;
     
+    pln("object count = %d", tmx.object_count);
+    
     for (int object_index = 0; object_index < tmx.object_count; object_index++) {
         Tmx_Object* object = &tmx.objects[object_index];
         switch (object->group) {
@@ -262,9 +281,12 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
     }
     
     // Invert gravity
-    if (controller->action_pressed && player->is_grounded && game->ability_unlock_gravity) {
+    //if (controller->action_pressed && player->is_grounded && game->ability_unlock_gravity) {
+    
+    if (controller->action_pressed) {
+        PlaySound(game->snd_gravity_switch);
         player->invert_gravity = !player->invert_gravity;
-        player->velocity.y = jump_velocity*gravity_sign;
+        player->velocity.y = -7*gravity_sign;
         player->is_grounded = false;
     }
     
@@ -308,6 +330,7 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
                     ((!other->invert_gravity && player->collision & Col_Bottom) ||
                      (other->invert_gravity && player->collision & Col_Top))) {
                     kill_entity(other);
+                    PlaySound(game->snd_plum_death);
                     // bounce
                     if (controller->jump_down) {
                         player->velocity.y = jump_velocity*gravity_sign;
@@ -327,10 +350,16 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
             } break;
             
             case Gravity_Normal: {
+                if (player->invert_gravity) {
+                    PlaySound(game->snd_gravity_switch);
+                }
                 player->invert_gravity = false;
             } break;
             
             case Gravity_Inverted: {
+                if (!player->invert_gravity) {
+                    PlaySound(game->snd_gravity_switch);
+                }
                 player->invert_gravity = true;
             } break;
         }
@@ -460,6 +489,71 @@ update_enemy_plum(Game_State* game, Entity* entity) {
     }
 }
 
+
+void
+update_enemy_sharpie(Game_State* game, Entity* entity) {
+    if (entity->health <= 0) {
+        //entity->type = Enemy_Plum_Dead;
+        //entity->sprite = &game->texture_plum_dead;
+        entity->is_rigidbody = false;
+        return;
+    }
+    
+    f32 gravity_sign = 1;
+    if (entity->invert_gravity) {
+        gravity_sign = -1;
+    }
+    
+    // Invert gravity to attack the player (within attack range)
+    f32 x_diff = (game->player->p.x - entity->p.x)*entity->direction.x;
+    if (entity->invert_gravity == entity->prev_invert_gravity &&
+        fabsf(game->player->p.y - entity->p.y) > 2.0f &&
+        x_diff > 0.0f && x_diff < 3.0f) {
+        
+        if (entity->invert_gravity != game->player->invert_gravity) {
+            entity->invert_gravity = game->player->invert_gravity;
+            entity->velocity.y = -7*gravity_sign;
+        }
+    }
+    
+    if (entity->direction.x == 0) {
+        entity->direction.x = -1.0f;
+    }
+    
+    if (entity->is_grounded) {
+        entity->acceleration.x = 5.0f * entity->direction.x;
+    }
+    entity->acceleration.y = game->fall_gravity * gravity_sign;
+    
+    // Run physics
+    update_rigidbody(game, entity);
+    
+    if (entity->collided_with) {
+        Entity* other = entity->collided_with;
+        switch (other->type) {
+            case Player: {
+                kill_entity(other);
+            } break;
+            
+            case Gravity_Normal: {
+                entity->invert_gravity = false;
+            } break;
+            
+            case Gravity_Inverted: {
+                entity->invert_gravity = true;
+            } break;
+        }
+    }
+    
+    if (entity->map_collision & Col_Left) {
+        entity->direction.x = 1.0f;
+    } else if (entity->map_collision & Col_Right) {
+        entity->direction.x = -1.0f;
+    }
+    
+    entity->size = vec2(1.0f, 1.0f);
+}
+
 void
 render_level(Game_State* game, bool skip_enemies=false, bool skip_tilemap=false) {
     for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
@@ -564,6 +658,38 @@ camera_follow_entity_y(Game_State* game, Entity* entity, f32 camera_max_offset=2
     }
 }
 
+Color colors[] = {
+    WHITE, 
+    { 255, 82,  119, 255 },
+    { 255, 174, 112, 255 }, 
+    { 146, 232, 192, 255 },
+    { 255, 238, 131, 255 }
+};
+
+void
+update_and_render_gravity_particle_system(Game_State* game, Particle_System* ps, bool slowdown=true, bool change_gravity=false, bool inverted=false) {
+    for_particle(ps, pa, ci) {
+        Color c = colors[ci % fixed_array_count(colors)];
+        c.a = (u8) (quad_fade_in_out(pa->t) * 255);
+        
+        if (change_gravity) {
+            if (inverted && pa->v.y > 0.0f) pa->v.y = -pa->v.y;
+            if (!inverted && pa->v.y < 0.0f) pa->v.y = -pa->v.y;
+        }
+        
+        v2s p = to_pixel(game, pa->p);
+        v2s p0 = to_pixel(game, pa->p - pa->v);
+        if (slowdown) pa->v *= 0.96f;
+        DrawLine(p0.x, p0.y, p.x, p.y, c);
+        DrawPixel(p.x - 1, p.y, c);
+        
+        // Kill particles outside view vertically
+        if (pa->p.y < -2.0f || pa->p.y > game->game_height + 2.0f) {
+            pa->t = 0.0f;
+        }
+    }
+}
+
 void
 update_and_render_level(Game_State* game) {
     Game_Controller controller = get_controller(game);
@@ -571,6 +697,18 @@ update_and_render_level(Game_State* game) {
     Box sim_window;
     sim_window.p = game->camera_p - vec2(2.0f, 2.0f);
     sim_window.size = vec2(game->game_width + 4.0f, game->game_height + 4.0f);
+    
+    v2 game_box = vec2((f32) game->game_width, (f32) game->game_height);
+    game->ps_gravity->min_angle = game->player->invert_gravity ? -PI_F32/2.0f : PI_F32/2.0f;
+    game->ps_gravity->max_angle = game->player->invert_gravity ? -PI_F32/2.0f : PI_F32/2.0f;
+    game->ps_gravity->start_min_p = vec2(game->player->p.x - game_box.x, -game_box.y);
+    game->ps_gravity->start_max_p = vec2(game->player->p.x + game_box.x, game_box.y);
+    game->ps_gravity->min_speed = 0.01f;
+    game->ps_gravity->max_speed = 0.03f;
+    game->ps_gravity->spawn_rate = 0.05f;
+    game->ps_gravity->delta_t = 0.001f;
+    update_particle_system(game->ps_gravity, true);
+    
     
     // Update game
     for (int entity_index = 0; entity_index < game->entity_count; entity_index++) {
@@ -584,6 +722,12 @@ update_and_render_level(Game_State* game) {
             case Enemy_Plum: {
                 if (box_check(sim_window, entity->collider)) {
                     update_enemy_plum(game, entity);
+                }
+            } break;
+            
+            case Enemy_Sharpie: {
+                if (box_check(sim_window, entity->collider)) {
+                    update_enemy_sharpie(game, entity);
                 }
             } break;
             
@@ -642,6 +786,8 @@ update_and_render_level(Game_State* game) {
     camera_follow_entity_x(game, game->player);
     camera_lock_y_to_zero(game);
     
+    update_and_render_gravity_particle_system(game, game->ps_gravity, false, true, game->player->invert_gravity);
+    
     render_level(game);
 }
 
@@ -654,25 +800,17 @@ update_and_render_death_screen(Game_State* game) {
     set_game_mode(game, GameMode_Level);
 }
 
-Color colors[] = {
-    WHITE, 
-    { 255, 82,  119, 255 },
-    { 255, 174, 112, 255 }, 
-    { 146, 232, 192, 255 },
-    { 255, 238, 131, 255 }
-};
-
 void
 update_and_render_cutscene_ability(Game_State* game) {
     Entity* player = game->player;
-    const v2 target = vec2(176, 14);
+    const v2 target = vec2(235, 14);
     game->ps_gravity->start_min_p = target;
     game->ps_gravity->start_max_p = target + vec2(1, 1);
     game->ps_gravity->min_angle = -PI_F32 + 0.05f;
     game->ps_gravity->max_angle = 0.05f;
     game->ps_gravity->min_speed = 0.05f; game->ps_gravity->max_speed = 0.6f;
-    game->ps_gravity->spawn_rate = 0.05f;
-    game->ps_gravity->delta_t = 0.005f;
+    game->ps_gravity->spawn_rate = 0.001f;
+    game->ps_gravity->delta_t = 0.01f;
     
     if (game->mode_timer < 1.5f) {
         game->ability_block = 0;
@@ -680,6 +818,7 @@ update_and_render_cutscene_ability(Game_State* game) {
         // Setup
         player->acceleration.x = 0.0f;
         player->acceleration.y = 0.0f;
+        player->direction.x = 1.0f;
         game->start_p = get_camera_to_target_p(game);
         
     } else if (game->mode_timer < 3.0f) {
@@ -736,14 +875,22 @@ update_and_render_cutscene_ability(Game_State* game) {
         }
         
         update_particle_system(game->ps_gravity, false);
+        
+        if (game->mode_timer < 7.8f) {
+            for_particle(game->ps_gravity, pa, ci) {
+                pa->v.y += 0.005f;
+            }
+        }
     } else {
         
-        v2 game_box = vec2(game->game_width/2.0f, game->game_height/2.0f); 
+        v2 game_box = vec2(game->game_width/2.0f, (f32) game->game_height); 
         game->ps_gravity->min_angle = -PI_F32/2.0f;
         game->ps_gravity->max_angle = -PI_F32/2.0f;
-        game->ps_gravity->start_min_p = target - game_box;
+        game->ps_gravity->start_min_p = target - vec2(game_box.x, 0.0f);
         game->ps_gravity->start_max_p = target + game_box;
-        game->ps_gravity->max_speed = 0.05f;
+        game->ps_gravity->spawn_rate = 0.1f;
+        game->ps_gravity->min_speed = 0.05f;
+        game->ps_gravity->max_speed = 0.7f;
         game->ps_gravity->delta_t = 0.01f;
         update_particle_system(game->ps_gravity, true);
         
@@ -760,7 +907,9 @@ update_and_render_cutscene_ability(Game_State* game) {
             update_tutorial(game, true, Tutorial_Switch_Gravity);
             
             if (controller.action_pressed) {
-                start_music_crossfade(game, {}, 1.5f);
+                PlaySound(game->snd_gravity_switch);
+                player->prev_invert_gravity = true;
+                start_music_crossfade(game, game->music_level1_intro, 3.0f);
                 set_game_mode(game, GameMode_Level);
                 player->invert_gravity = false;
                 player->velocity.y = 6.0f;
@@ -785,16 +934,7 @@ update_and_render_cutscene_ability(Game_State* game) {
     
     render_level(game, game->mode_timer >= 8.0f, game->mode_timer >= 8.0f);
     
-    for_particle(game->ps_gravity, pa, ci) {
-        Color c = colors[ci % fixed_array_count(colors)];
-        c.a = (u8) (pa->t * 255);
-        
-        v2s p = to_pixel(game, pa->p);
-        v2s p0 = to_pixel(game, pa->p - pa->v);
-        pa->v *= 0.96f;
-        DrawLine(p0.x, p0.y, p.x, p.y, c);
-        DrawPixel(p.x, p.y, c);
-    }
+    update_and_render_gravity_particle_system(game, game->ps_gravity);
 }
 
 

@@ -92,9 +92,7 @@ draw_entity(Game_State* game, Entity* entity, Entity_Layer layer) {
         
         case Gravity_Inverted:
         case Gravity_Normal: {
-            static v2 scroll_space = {};
-            scroll_space += 0.002f;
-            v2 sprite_offset = scroll_space + game->camera_p.x*0.2f;
+            v2 sprite_offset = vec2(1.0f, 1.0f)*game->global_timer*2.0f + game->camera_p.x*0.2f;
             draw_sprite(game, entity->sprite, entity->p, sprite_offset, entity->size, {}, 0);
         } break;
         
@@ -112,6 +110,23 @@ draw_entity(Game_State* game, Entity* entity, Entity_Layer layer) {
             } else {
                 sprite_offset.y = 0.15f;//25f;
                 draw_sprite(game, &game->texture_character_inv, entity->p - sprite_offset, {}, vec2(1.0f, 2.7f), dir, frame);
+            }
+        } break;
+        
+        case Enemy_Sharpie: {
+            dir = entity->direction;
+            if (dir.y > 0 && entity->invert_gravity &&
+                entity->invert_gravity == entity->prev_invert_gravity) {
+                dir.y = -1;
+            }
+            if (dir.y < 0 && !entity->invert_gravity &&
+                entity->invert_gravity == entity->prev_invert_gravity) {
+                dir.y = 1;
+            }
+            
+            if (entity->sprite) {
+                pln("%f, %f", entity->size.x, entity->size.y);
+                draw_sprite(game, entity->sprite, entity->p, {}, entity->size, dir, frame);
             }
         } break;
         

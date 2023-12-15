@@ -181,11 +181,14 @@ update_rigidbody(Game_State* game, Entity* entity) {
     entity->velocity += entity->acceleration * delta_time;
     
     // Play sound effect on player inpact with ground at max speed
-    if (entity->type == Player && entity->prev_invert_gravity != entity->invert_gravity) {
+    if (entity->type == Player && entity->prev_invert_gravity != entity->invert_gravity &&
+        fabsf(velocity_before.y) > entity->max_speed.y*0.8f) {
         if (entity->is_grounded) {
-            entity->prev_invert_gravity = entity->invert_gravity;
             PlaySound(game->snd_gravity_landing);
         }
+    }
+    if (entity->is_grounded) {
+        entity->prev_invert_gravity = entity->invert_gravity;
     }
     
     

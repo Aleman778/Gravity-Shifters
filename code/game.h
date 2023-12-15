@@ -13,6 +13,7 @@ enum Entity_Type {
     Coin,
     Enemy_Plum,
     Enemy_Plum_Dead,
+    Enemy_Sharpie,
     Vine,
     Gravity_Normal,
     Gravity_Inverted,
@@ -127,6 +128,7 @@ TEX2D(ui_coin, "ui_coin.png") \
 TEX2D(spikes, "spikes.png") \
 TEX2D(plum, "plum.png") \
 TEX2D(plum_dead, "plum_dead.png") \
+TEX2D(sharpie, "sharpie.png") \
 TEX2D(vine, "vine.png") \
 TEX2D(space, "space.png") \
 TEX2D(ui_walk_keyboard, "ui_walk_keyboard.png") \
@@ -141,8 +143,10 @@ TEX2D(ui_gravity_gamepad, "ui_gravity_gamepad.png") \
 #define DEF_SOUND \
 SND(pickup_moon, "pickup_moon.wav") \
 SND(death, "death.wav") \
+SND(plum_death, "plum_death.wav") \
 SND(explosion, "explosion.wav") \
 SND(gravity_landing, "gravity_landing.wav") \
+SND(gravity_switch, "gravity_switch.wav") \
 
 #define DEF_MUSIC \
 MUSIC(level1_intro, "level1_intro.wav") \

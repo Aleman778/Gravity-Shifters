@@ -7,7 +7,7 @@
 #ifndef DEFAULT_ALIGNMENT
 #define DEFAULT_ALIGNMENT (2*alignof(smm))
 #endif
-#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(10)
+#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(16)
 
 // TODO(Alexander): special asserts
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")

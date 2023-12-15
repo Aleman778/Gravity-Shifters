@@ -10,6 +10,11 @@ cubic_ease_in_out(f32 x) {
     return x < 0.5 ? 4 * x * x * x : 1 - powf(-2 * x + 2, 3) / 2;
 }
 
+f32
+quad_fade_in_out(f32 t) {
+    return (-2*t+1)*(2*t-1) +1;
+}
+
 union v2 {
     struct {
         f32 x, y;
@@ -44,6 +49,7 @@ union v2s {
     struct {
         s32 u, v;
     };
+    
     struct {
         s32 width, height;
     };
