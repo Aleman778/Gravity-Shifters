@@ -125,7 +125,6 @@ draw_entity(Game_State* game, Entity* entity, Entity_Layer layer) {
             }
             
             if (entity->sprite) {
-                pln("%f, %f", entity->size.x, entity->size.y);
                 draw_sprite(game, entity->sprite, entity->p, {}, entity->size, dir, frame);
             }
         } break;
@@ -170,7 +169,11 @@ game_draw_ui(Game_State* game, f32 width, f32 height, f32 scale) {
         } else if (is_tutorial_active(game, Tutorial_Switch_Gravity)) {
             tutorial = "Change gravity";
             tex = game->use_gamepad ? game->texture_ui_gravity_gamepad : game->texture_ui_gravity_keyboard;
+        } else if (is_tutorial_active(game, Tutorial_Switch_Gravity_Midair)) {
+            tutorial = "Change gravity once in midair";
+            //tex = game->use_gamepad ? game->texture_ui_gravity_gamepad : game->texture_ui_gravity_keyboard;
         }
+        
         
         Vector2 p = { width/2.0f - 64.0f, height - 80.0f };
         DrawTextureEx(tex, p, 0, scale, WHITE);

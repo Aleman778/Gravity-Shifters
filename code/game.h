@@ -42,6 +42,7 @@ enum {
     Tutorial_Jump = bit(2),
     Tutorial_Long_Jump = bit(3),
     Tutorial_Switch_Gravity = bit(4),
+    Tutorial_Switch_Gravity_Midair = bit(5),
 };
 typedef u8 Tutorial;
 
@@ -178,6 +179,7 @@ struct Game_State {
     
     Tutorial curr_tutorials;
     Tutorial finished_tutorials;
+    Tutorial saved_finished_tutorials;
     
     s32 coins;
     s32 saved_coins;

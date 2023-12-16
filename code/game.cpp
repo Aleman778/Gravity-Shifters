@@ -143,10 +143,10 @@ get_floor_tiles(Game_State* game, Entity* entity, f32 range=0.5f) {
     return result;
 }
 
-
 void
 save_game_state(Game_State* game) {
     game->saved_coins = game->coins;
+    game->saved_finished_tutorials = game->finished_tutorials;
     for_array(game->entities, entity, i) {
         Saved_Entity* saved_entity = &game->saved_entities[i];
         saved_entity->type = entity->type;
@@ -170,6 +170,8 @@ save_game_state(Game_State* game) {
 void
 restore_game_state(Game_State* game) {
     game->coins = game->saved_coins;
+    game->curr_tutorials = 0;
+    game->saved_finished_tutorials = game->finished_tutorials;
     for_array(game->entities, entity, i) {
         Saved_Entity* saved_entity = &game->saved_entities[i];
         *entity = {};
@@ -228,8 +230,6 @@ game_setup_level(Game_State* game, Memory_Arena* level_arena, string filename) {
     game->tile_map = tmx.tile_map;
     game->tile_map_width = tmx.tile_map_width;
     game->tile_map_height = tmx.tile_map_height;
-    
-    pln("object count = %d", tmx.object_count);
     
     for (int object_index = 0; object_index < tmx.object_count; object_index++) {
         Tmx_Object* object = &tmx.objects[object_index];
@@ -343,6 +343,10 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
                 }
             } break;
             
+            case Enemy_Sharpie: {
+                kill_entity(player);
+            } break;
+            
             case Coin: {
                 other->type = None;
                 game->coins++;
@@ -384,7 +388,8 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
             // Make sure we don't save next to an enemy and soft lock the game
             bool is_nearby_enemy = false;
             for_array(game->entities, other, _2) {
-                if (other->type == Enemy_Plum) {
+                if (other->type == Enemy_Plum ||
+                    other->type == Enemy_Sharpie) {
                     Box area = other->collider;
                     area.p -= 5.0f;
                     area.size += 10.0f;
@@ -420,6 +425,10 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
             
             if (string_equals(trigger->tag, string_lit("tutorial_gravity"))) {
                 update_tutorial(game, game->ability_unlock_gravity && overlap, Tutorial_Switch_Gravity);
+            }
+            
+            if (string_equals(trigger->tag, string_lit("tutorial_gravity_midair"))) {
+                update_tutorial(game, overlap, Tutorial_Switch_Gravity_Midair);
             }
             
             
@@ -998,8 +1007,8 @@ main() {
     InitWindow(game.screen_width, game.screen_height, "Bigmode Game Jam 2023");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     
-    MaximizeWindow();
-    ToggleFullscreen();
+    //MaximizeWindow();
+    //ToggleFullscreen();
     
     InitAudioDevice();
     
@@ -1032,7 +1041,7 @@ main() {
     cstring filename = level_assets[0];
     game_setup_level(&game, &level_arena, string_lit(filename));
     
-    start_music(&game, game.music_level1_intro);
+    //start_music(&game, game.music_level1_intro);
     
     while (!WindowShouldClose()) {
         game.global_timer += GetFrameTime();
