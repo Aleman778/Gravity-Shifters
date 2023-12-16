@@ -197,6 +197,10 @@ convert_tmx_object_to_entity(Game_State* game, Tmx_Object* object) {
     if (index >= 0 && index < fixed_array_count(gid_to_entity_type)) {
         entity->type = gid_to_entity_type[index];
         
+        if (entity->type == Coin) {
+            game->max_coins++;
+        }
+        
         if (object->gid == player_inverted_gid) {
             entity->invert_gravity = true;
         }
@@ -281,9 +285,10 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
     }
     
     // Invert gravity
-    //if (controller->action_pressed && player->is_grounded && game->ability_unlock_gravity) {
-    
-    if (controller->action_pressed) {
+    if (controller->action_pressed && 
+        player->prev_invert_gravity == player->invert_gravity && 
+        game->ability_unlock_gravity) {
+        
         PlaySound(game->snd_gravity_switch);
         player->invert_gravity = !player->invert_gravity;
         player->velocity.y = -7*gravity_sign;
@@ -431,6 +436,18 @@ update_player(Game_State* game, Entity* player, Game_Controller* controller) {
                 update_tutorial(game, overlap, Tutorial_Switch_Gravity_Midair);
             }
             
+            if (string_equals(trigger->tag, string_lit("music_level1_2"))) {
+                if (overlap) {
+                    start_music_crossfade(game, game->music_level1_2, 2.0f);
+                }
+            }
+            
+            if (string_equals(trigger->tag, string_lit("endgame"))) {
+                if (overlap) {
+                    set_game_mode(game, GameMode_Cutscene_Endgame);
+                }
+            }
+            
             
             if (overlap && string_equals(trigger->tag, string_lit("ability"))) {
                 if (!game->ability_unlock_gravity) {
@@ -466,7 +483,6 @@ update_enemy_plum(Game_State* game, Entity* entity) {
     
     // Run physics
     update_rigidbody(game, entity);
-    
     
     if (entity->is_grounded) {
         Surround_Tiles s = get_floor_tiles(game, entity, 1.0f);
@@ -918,7 +934,7 @@ update_and_render_cutscene_ability(Game_State* game) {
             if (controller.action_pressed) {
                 PlaySound(game->snd_gravity_switch);
                 player->prev_invert_gravity = true;
-                start_music_crossfade(game, game->music_level1_intro, 3.0f);
+                start_music_crossfade(game, game->music_level1_3, 3.0f);
                 set_game_mode(game, GameMode_Level);
                 player->invert_gravity = false;
                 player->velocity.y = 6.0f;
@@ -946,6 +962,64 @@ update_and_render_cutscene_ability(Game_State* game) {
     update_and_render_gravity_particle_system(game, game->ps_gravity);
 }
 
+void
+update_and_render_cutscene_endgame(Game_State* game) {
+    Entity* player = game->player;
+    
+    v2 game_box = vec2((f32) game->game_width, (f32) game->game_height);
+    game->ps_gravity->start_min_p = vec2(game->player->p.x - 2.0f, game_box.y + 1.0f);
+    game->ps_gravity->start_max_p = vec2(game->player->p.x - 4.0f, game_box.y + 2.0f);
+    game->ps_gravity->min_angle = -PI_F32 + 0.05f;
+    game->ps_gravity->max_angle = 0.05f;
+    game->ps_gravity->min_speed = 0.05f; game->ps_gravity->max_speed = 0.6f;
+    game->ps_gravity->spawn_rate = 0.001f;
+    game->ps_gravity->delta_t = 0.01f;
+    
+    player->direction.x = 1.0f;
+    
+    static bool burst = false;
+    if (game->mode_timer > 1.0f) {
+        if (!burst) {
+            burst = true;
+            particle_burst(game->ps_gravity, 200, 1.0f);
+            for_particle(game->ps_gravity, pa, ci) {
+                pa->v.y += -0.5f;
+            }
+        }
+        
+        if (game->mode_timer > 3.0f) {
+            game->ps_gravity->min_angle = -PI_F32/2.0f;
+            game->ps_gravity->max_angle = -PI_F32/2.0f;
+            game->ps_gravity->start_min_p = vec2(game->player->p.x - game_box.x, game_box.y);
+            game->ps_gravity->start_max_p = vec2(game->player->p.x + game_box.x, game_box.y);
+            game->ps_gravity->spawn_rate = 0.1f;
+            game->ps_gravity->min_speed = 0.05f;
+            game->ps_gravity->max_speed = 0.7f;
+            game->ps_gravity->delta_t = 0.01f;
+            update_particle_system(game->ps_gravity, true);
+        }
+        
+    }
+    
+    
+    
+    camera_follow_entity_x(game, game->player);
+    camera_lock_y_to_zero(game);
+    start_music_crossfade(game, game->music_gravity_unlock, 2.0f);
+    
+    player->max_speed.x = 2.0f;
+    player->acceleration.x = 2.0f;
+    player->acceleration.y = player->invert_gravity ? -9.0f : 9.0f;
+    
+    update_particle_system(game->ps_gravity, game->mode_timer > 3.0f);
+    
+    update_rigidbody(game, player);
+    
+    render_level(game);
+    
+    update_and_render_gravity_particle_system(game, game->ps_gravity);
+}
+
 
 void
 game_update_and_render(Game_State* game, RenderTexture2D render_target) {
@@ -965,6 +1039,10 @@ game_update_and_render(Game_State* game, RenderTexture2D render_target) {
         
         case GameMode_Cutscene_Ability: {
             update_and_render_cutscene_ability(game);
+        } break;
+        
+        case GameMode_Cutscene_Endgame: {
+            update_and_render_cutscene_endgame(game);
         } break;
     }
     
@@ -1041,7 +1119,7 @@ main() {
     cstring filename = level_assets[0];
     game_setup_level(&game, &level_arena, string_lit(filename));
     
-    //start_music(&game, game.music_level1_intro);
+    start_music(&game, game.music_level1_1);
     
     while (!WindowShouldClose()) {
         game.global_timer += GetFrameTime();

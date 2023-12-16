@@ -110,6 +110,7 @@ struct Entity {
 enum Game_Mode {
     GameMode_Level,
     GameMode_Cutscene_Ability,
+    GameMode_Cutscene_Endgame,
     GameMode_Death_Screen,
 };
 
@@ -150,7 +151,9 @@ SND(gravity_landing, "gravity_landing.wav") \
 SND(gravity_switch, "gravity_switch.wav") \
 
 #define DEF_MUSIC \
-MUSIC(level1_intro, "level1_intro.wav") \
+MUSIC(level1_1, "level1_1.wav") \
+MUSIC(level1_2, "level1_2.wav") \
+MUSIC(level1_3, "level1_3.wav") \
 MUSIC(gravity_unlock, "gravity_unlock.wav") \
 
 struct Game_State {
@@ -182,6 +185,7 @@ struct Game_State {
     Tutorial saved_finished_tutorials;
     
     s32 coins;
+    s32 max_coins;
     s32 saved_coins;
     
     v2 camera_p;

@@ -174,7 +174,6 @@ game_draw_ui(Game_State* game, f32 width, f32 height, f32 scale) {
             //tex = game->use_gamepad ? game->texture_ui_gravity_gamepad : game->texture_ui_gravity_keyboard;
         }
         
-        
         Vector2 p = { width/2.0f - 64.0f, height - 80.0f };
         DrawTextureEx(tex, p, 0, scale, WHITE);
         p.x += 34.0f*scale;
@@ -182,6 +181,37 @@ game_draw_ui(Game_State* game, f32 width, f32 height, f32 scale) {
             p.y += 2.0f*scale;
         }
         DrawTextEx(game->font_default, tutorial, p, 14*scale, 0, WHITE);
+    }
+    
+    if (game->mode == GameMode_Cutscene_Endgame) {
+        if (game->mode_timer > 1.2f) {
+            Vector2 p = { width/2.0f - 150.0f*scale, 100.0f };
+            DrawTextEx(game->font_default, "Thanks for Playing!", p, 14*scale*2, 0, WHITE);
+        }
+        
+        if (game->mode_timer > 5.0f) {
+            Vector2 p = { width/2.0f - 60.0f*scale, 100.0f + 48.0f*scale };
+            DrawTextEx(game->font_default, "You collected", p, 14*scale, 0, WHITE);
+        }
+        
+        if (game->mode_timer > 5.5f) {
+            Vector2 p = { width/2.0f - 50.0f*scale, 100.0f + 70*scale };
+            cstring coins = TextFormat("%d / %d", game->coins, game->max_coins);
+            DrawTextureEx(game->texture_ui_coin, p, 0, scale, WHITE);
+            p.x += (game->texture_ui_coin.width + 1.0f) * scale;
+            p.y += scale;
+            DrawTextEx(game->font_default, coins, p, 14*scale, 0, WHITE);
+        }
+        
+        if (game->coins >= 50 && game->mode_timer > 6.0f) {
+            Vector2 p = { width/2.0f - 70.0f*scale, 100.0f + 100.0f*scale };
+            DrawTextEx(game->font_default, "Congratulations!", p, 14*scale, 0, WHITE);
+        }
+        
+        if (game->mode_timer > 3.0f) {
+            Vector2 p = { 16.0f, height - 32.0f*scale };
+            DrawTextEx(game->font_default, "Game by Aleman778", p, 14*scale, 0, WHITE);
+        }
     }
 }
 
